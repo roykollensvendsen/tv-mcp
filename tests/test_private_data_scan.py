@@ -39,3 +39,10 @@ def test_only_private_settings_count_not_the_friendly_names(tmp_path):
         '[tvs.den]\nnames = ["the living room"]\naddress = "192.0.2.77"\n'
     )
     assert private_data_scan.private_values(path) == {"abc123secret", "192.0.2.77"}
+
+
+def test_the_jellyfin_key_file_counts_as_private(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\n')
+    (tmp_path / "jellyfin-key").write_text("key-from-its-own-file\n")
+    assert "key-from-its-own-file" in private_data_scan.private_values(path)

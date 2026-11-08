@@ -16,3 +16,6 @@ src/*/_version.py
 coverage.xml
 htmlcov/
 scripts/.mutate-recovery.json
+
+# A Jellyfin API key belongs in ~/.config/tv-mcp, never here.
+jellyfin-key

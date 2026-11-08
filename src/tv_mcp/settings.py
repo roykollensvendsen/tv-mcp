@@ -6,7 +6,7 @@ path in ``TV_MCP_SETTINGS``), because it holds addresses, tokens and keys:
 
     [jellyfin]
     url = "http://192.0.2.5:8096"
-    api_key = "..."
+    # the API key: in a file of its own, ``jellyfin-key`` beside this one, or here as api_key
 
     [tvs.living-room]
     names = ["the living room", "The Frame"]
@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 DEFAULT_PATH = "~/.config/tv-mcp/config.toml"
+#: The Jellyfin API key's own file, beside the settings file, so it can be
+#: pasted into an editor without touching the settings.
+KEY_FILE = "jellyfin-key"
 
 
 @dataclass(frozen=True)
@@ -87,9 +90,15 @@ def load_settings(path: pathlib.Path) -> Settings:
     return Settings(
         tvs=tvs,
         jellyfin_url=jellyfin.get("url"),
-        jellyfin_key=jellyfin.get("api_key"),
+        jellyfin_key=jellyfin.get("api_key") or _key_file(path),
         features=tuple(enabled) if enabled is not None else None,
     )
+
+
+def _key_file(settings: pathlib.Path) -> str | None:
+    file = settings.with_name(KEY_FILE)
+    key = file.read_text().strip() if file.is_file() else ""
+    return key or None
 
 
 def _tv(key: str, table: dict[str, Any]) -> Tv:

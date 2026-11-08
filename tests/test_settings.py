@@ -77,3 +77,24 @@ def test_a_tv_uses_the_samsung_driver_unless_it_names_another(settings, tmp_path
     path = tmp_path / "lg.toml"
     path.write_text('[tvs.den]\nnames = ["den"]\ndriver = "lg-webos"\n')
     assert load_settings(path).tvs[0].driver == "lg-webos"
+
+
+def test_the_jellyfin_key_is_read_from_its_own_file_beside_the_settings(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\n')
+    (tmp_path / "jellyfin-key").write_text("from-the-file\n")
+    assert load_settings(path).jellyfin_key == "from-the-file"
+
+
+def test_an_empty_key_file_means_no_key(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\n')
+    (tmp_path / "jellyfin-key").write_text("")
+    assert load_settings(path).jellyfin_key is None
+
+
+def test_a_key_in_the_settings_file_wins_over_the_key_file(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\napi_key = "inline"\n')
+    (tmp_path / "jellyfin-key").write_text("from-the-file")
+    assert load_settings(path).jellyfin_key == "inline"

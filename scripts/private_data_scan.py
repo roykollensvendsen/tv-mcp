@@ -43,16 +43,19 @@ PRIVATE_KEYS = {"address", "mac", "url", "api_key", "token"}
 
 def private_values(settings: pathlib.Path) -> set[str]:
     """The private values in the owner's settings file, at any depth."""
-    if not settings.is_file():
-        return set()
     out: set[str] = set()
-    stack: list[dict[str, object]] = [tomllib.loads(settings.read_text())]
+    stack: list[dict[str, object]] = [tomllib.loads(settings.read_text())] if settings.is_file() else []
     while stack:
         for key, value in stack.pop().items():
             if isinstance(value, dict):
                 stack.append(value)
             elif key in PRIVATE_KEYS and isinstance(value, str) and len(value) >= MIN_SECRET:
                 out.add(value)
+    # The Jellyfin key may sit in a file of its own beside the settings.
+    key_file = settings.with_name("jellyfin-key")
+    key = key_file.read_text().strip() if key_file.is_file() else ""
+    if len(key) >= MIN_SECRET:
+        out.add(key)
     return out
 
 
