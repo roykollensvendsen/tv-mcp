@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 dynamic = ["version"]
-dependencies = []
+dependencies = ["httpx>=0.28", "mcp>=2.3"]
 
 [project.scripts]
 tv-mcp = "tv_mcp.cli:main"
@@ -48,7 +48,7 @@ ignore = ["D203", "D213", "COM812", "ISC001", "CPY001", "D401"]
 [tool.ruff.lint.per-file-ignores]
 # A test's name is its docstring, its fixtures need no annotations, and a bare
 # assert is the point of pytest.
-"tests/*" = ["S101", "ANN", "D1", "PLR2004", "INP001", "S603", "S607"]
+"tests/*" = ["S101", "ANN", "ARG", "D1", "PLR2004", "INP001", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"

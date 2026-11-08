@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The owner's settings file: friendly TV names, and which TVs to leave alone."""
+
+import pytest
+
+from tv_mcp.settings import AmbiguousTvError, UnknownTvError, find_tv, load_settings
+
+EXAMPLE = """
+[jellyfin]
+url = "http://192.0.2.5:8096"
+api_key = "example-key"
+
+[tvs.living-room]
+names = ["the living room", "The Frame"]
+address = "192.0.2.10"
+mac = "00:00:5E:00:53:01"
+
+[tvs.upstairs]
+names = ["upstairs"]
+address = "192.0.2.11"
+hands_off = true
+"""
+
+
+@pytest.fixture
+def settings(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(EXAMPLE)
+    return load_settings(path)
+
+
+def test_settings_are_read_from_the_file(settings):
+    living = settings.tvs[0]
+    assert living.key == "living-room"
+    assert living.address == "192.0.2.10"
+    assert living.mac == "00:00:5E:00:53:01"
+    assert not living.hands_off
+    assert settings.tvs[1].hands_off
+    assert settings.jellyfin_url == "http://192.0.2.5:8096"
+
+
+def test_a_missing_file_means_no_tvs(tmp_path):
+    settings = load_settings(tmp_path / "absent.toml")
+    assert settings.tvs == ()
+    assert settings.jellyfin_url is None
+
+
+def test_a_tv_is_found_by_any_of_its_names_however_it_is_said(settings):
+    for said in ("The Frame", "the frame", "  living room ", "Living-Room", "the living room"):
+        assert find_tv(settings, said).key == "living-room", said
+
+
+def test_an_unknown_name_is_refused_with_the_names_there_are(settings):
+    with pytest.raises(UnknownTvError, match="the living room"):
+        find_tv(settings, "the kitchen")
+
+
+def test_a_name_that_matches_two_tvs_is_refused(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[tvs.a]\nnames = ["the tv"]\naddress = "192.0.2.1"\n'
+        '[tvs.b]\nnames = ["The TV"]\naddress = "192.0.2.2"\n'
+    )
+    with pytest.raises(AmbiguousTvError):
+        find_tv(load_settings(path), "the tv")
+
+
+def test_features_are_the_default_unless_the_file_names_them(settings, tmp_path):
+    assert settings.features is None
+    path = tmp_path / "with-features.toml"
+    path.write_text('[features]\nenabled = ["status", "setup"]\n')
+    assert load_settings(path).features == ("status", "setup")
+
+
+def test_a_tv_uses_the_samsung_driver_unless_it_names_another(settings, tmp_path):
+    assert settings.tvs[0].driver == "samsung-tizen"
+    path = tmp_path / "lg.toml"
+    path.write_text('[tvs.den]\nnames = ["den"]\ndriver = "lg-webos"\n')
+    assert load_settings(path).tvs[0].driver == "lg-webos"

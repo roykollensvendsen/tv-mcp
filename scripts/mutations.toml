@@ -32,3 +32,21 @@ name = "a value from the settings file is never committed"
 file = "scripts/private_data_scan.py"
 find = 'found \+= \[f"a value from \{SETTINGS\.name\}" for s in secrets if s in text\]'
 replace = 'pass'
+
+[[rule]]
+name = "a name that matches two TVs is refused"
+file = "src/tv_mcp/settings.py"
+find = 'if len\(matches\) > 1:'
+replace = 'if False:'
+
+[[rule]]
+name = "a hands-off TV is never contacted"
+file = "src/tv_mcp/service.py"
+find = 'if tv\.hands_off or tv\.address is None:'
+replace = 'if tv.address is None:'
+
+[[rule]]
+name = "only a switched-on feature adds tools"
+file = "src/tv_mcp/server.py"
+find = 'for feature in wanted:'
+replace = 'for feature in FEATURES:'

@@ -2,12 +2,25 @@
 
 Voice control for a Samsung TV and a Jellyfin server, as an MCP server and an optional claude-voice plugin.
 
-<!-- not run: there is nothing to run until the walking skeleton exists -->
-```bash
-# Replace this block with what tv-mcp actually does, as a ```console block
-# whose output is what the command really prints. The suite runs those blocks
-# and compares them, so an example here cannot quietly stop being true.
+It is a design being built in slices ([`docs/design.md`](docs/design.md)).
+What works today is reading the TVs, never changing anything on them.
+
+Try it against a simulated Frame, which needs no TV and no settings:
+
+```console
+$ uv run tv-mcp status --simulate
+the living room: on (QE55LS03BAUXXC, 2022, Tizen 6.5)
 ```
+
+The same tools are served to a voice session over stdio, and the server stops
+when its input closes:
+
+```console
+$ uv run tv-mcp serve --simulate < /dev/null
+```
+
+Without `--simulate` it reads the TVs named in `~/.config/tv-mcp/config.toml`;
+the format is at the top of `src/tv_mcp/settings.py`.
 
 ## The gates
 
