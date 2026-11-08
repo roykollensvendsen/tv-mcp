@@ -19,10 +19,10 @@ owner's settings file, never here (see `scripts/private_data_scan.py`).
 | Year (from the model code) | 2022 (`22_PONTUSM_FTV`) | 2023 (`23_NIKEL_UHD_OS80`) |
 | Tizen | 6.5, from the model year; the TV does not report it | 7.0, from the model year; not reported |
 | Software version | not reported (`firmwareVersion: Unknown`) | not reported |
-| Local remote API, ports 8001 and 8002 | open, API 2.0.25, token pairing supported | open when it was on; switched off at the second reading |
+| Local remote API, ports 8001 and 8002 | open, API 2.0.25, token pairing supported | answered earlier in the evening; at later readings the TV did not answer on the network at all (no ping, no address resolution), which is a TV that is off rather than a setting |
 | Network | wireless | wireless |
 | Developer mode | on (Jellyfin is sideloaded) | off |
-| Jellyfin app | installed by developer mode, app id `AprZAARz4r.Jellyfin` | none |
+| Jellyfin app | installed by developer mode, app id `AprZAARz4r.Jellyfin` | wanted; the store first (2023 is inside the official app's 2021-and-newer range), developer mode if Norway does not have it yet |
 
 Wake-on-LAN was not tested, because sending the packet switches the TV on.
 Both TVs are on wireless, and switching a Samsung TV on over wireless is
@@ -97,7 +97,15 @@ moves on:
 
 The instructions that depend on the model are kept in data files, one per
 model family, so that a new TV is added with a file rather than with code:
-`src/tv_mcp/models/<year>-<family>.toml`, for example `2022-frame.toml`. Each
+`src/tv_mcp/models/<year>-<family>.toml`. The first two are `2022-frame.toml`
+(The Frame, Tizen 6.5, tested on 2026-11-08) and `2023-tizen7.toml` (the
+Q68CA, not yet tested). Both TVs go through the same five steps. The Q68CA
+has one step before them: **the TV has to be reachable on the network while it
+is off.** In Settings → General → Network → Expert Settings, *Power On with
+Mobile* and *IP Remote* are switched on. Under External Device Manager →
+Device Connection Manager, *Access Notification* must not block new devices.
+These are menu names reported for Tizen TVs of these years; the model file
+records the exact Norwegian names once they are seen on the TV. Each
 file holds how the year is recognised from the model code, the Tizen version,
 the menu names in English and Norwegian, the steps that differ from the
 defaults, and what has been tested on a real TV, with the date. A step with no
