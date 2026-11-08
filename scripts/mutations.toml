@@ -1,0 +1,34 @@
+# Every rule this project enforces, and the one line that carries it.
+#
+# A rule nothing catches is a rule nothing protects. `scripts/mutate.py` turns
+# each of these off in turn and runs the suite; a rule whose removal breaks no
+# test has no test. Add a test of your own that counts the rules in the source
+# against the rows here, so this list cannot fall behind.
+#
+# `find` is a regular expression matching the single line to replace; `replace`
+# is what replaces it, keeping the file valid. The line's own indentation is
+# kept, so do not write indentation here.
+#
+# [[rule]]
+# name = "what the rule says, in words"
+# file = "src/tv_mcp/somewhere.py"
+# find = 'if limit_exceeded:'
+# replace = 'if False:'
+
+[[rule]]
+name = "a commit message never links to a Claude session"
+file = "scripts/no_session_links.py"
+find = 'if SESSION\.search\(message\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a home-network address is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"home-network address \{m\}" for m in PRIVATE_IPV4\.findall\(text\)\]'
+replace = 'pass'
+
+[[rule]]
+name = "a value from the settings file is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"a value from \{SETTINGS\.name\}" for s in secrets if s in text\]'
+replace = 'pass'

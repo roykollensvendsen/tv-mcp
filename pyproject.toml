@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tv-mcp"
+description = "Voice control for a Samsung TV and a Jellyfin server, as an MCP server and an optional claude-voice plugin."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+dynamic = ["version"]
+dependencies = []
+
+[project.scripts]
+tv-mcp = "tv_mcp.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.13", "mypy>=1.11"]
+
+# One source for the version: the Git tag. A literal here would drift from it.
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/tv_mcp/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tv_mcp"]
+# py.typed tells a consumer's type checker that these annotations are meant.
+artifacts = ["src/tv_mcp/py.typed"]
+
+[tool.ruff]
+# Without this the package under src/ is sorted as a third-party import, and a
+# freshly scaffolded repository fails its own import-order check.
+src = ["src"]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+# D203/D213 contradict D211/D212, which are kept; COM812 and ISC001 fight the
+# formatter; CPY001 wants a header in every file, and the licence is one file;
+# D401 wants an imperative first line, but a command's docstring is also its
+# help text, and help reads as a description.
+select = ["ALL"]
+ignore = ["D203", "D213", "COM812", "ISC001", "CPY001", "D401"]
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name is its docstring, its fixtures need no annotations, and a bare
+# assert is the point of pytest.
+"tests/*" = ["S101", "ANN", "D1", "PLR2004", "INP001", "S603", "S607"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["tv_mcp"]
+omit = ["*/_version.py"]   # generated from the Git tag at build time
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["if __name__ == .__main__.:"]

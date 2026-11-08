@@ -1,0 +1,9 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Never commit an address, token or key from the owner's home
+# (scripts/private_data_scan.py). CI runs the same scan over every file.
+# Enabled with the commit-msg hook by
+#
+#     git config core.hooksPath .githooks
+set -e
+python3 "$(git rev-parse --show-toplevel)/scripts/private_data_scan.py"
