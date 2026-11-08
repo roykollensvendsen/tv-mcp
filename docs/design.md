@@ -153,15 +153,22 @@ with why it is needed, and `tv_setup` asks the owner before installing it.
    itself the request, so `media_play` switches that TV on without asking
    again. The owner chose this on 2026-11-08. It never switches a TV off,
    and it never acts on a TV the sentence did not name.
-2. Nothing is retried, and nothing happens on a schedule.
-3. Nothing leaves the home network. No cloud services are used, and the
+2. **A TV can be marked hands-off** in the settings file (`hands_off = true`),
+   for example one in a room where children are asleep. No tool sends it
+   anything while the mark is there: no power, no Wake-on-LAN, no pairing
+   prompt, and no probe, not even discovery. A hands-off TV is reported as
+   "left alone", and only the owner removes the mark by editing the file.
+   `tv_discover` reads only what TVs announce of their own accord, unless the
+   owner asks for a full search.
+3. Nothing is retried, and nothing happens on a schedule.
+4. Nothing leaves the home network. No cloud services are used, and the
    SmartThings route is ruled out because its personal tokens now expire
    after a day.
-4. Secrets live in a file the server is pointed at
+5. Secrets live in a file the server is pointed at
    (`~/.config/tv-mcp/config.toml`): the TV pairing tokens, the Jellyfin API
    key, the addresses. They are never in an environment variable the bridge
    would hold, and never in this repository.
-5. A simulated mode (`tv-mcp serve --simulate`) answers the same tools from a
+6. A simulated mode (`tv-mcp serve --simulate`) answers the same tools from a
    fake TV and a fake Jellyfin, for the tests and for the first try by voice.
 
 ## How it plugs into claude-voice
