@@ -191,10 +191,10 @@ and reading a TV's description of itself. Each later slice adds a method with
 its own safety rule. A contributor's driver comes with:
 
 - a model data file per model family for `tv_setup`;
-- a run of the conformance kit (`tests/conformance/`, to come): the same tests
+- a run of the conformance kit (`tv_mcp.conformance.check`): the same checks
   every driver must pass, against the contributor's driver and against the
   simulated TV in `simulator.py`, so most of it needs no hardware;
-- the "add a new TV" template in `CONTRIBUTING.md` (to come), which the
+- the "Add a new TV" steps in `CONTRIBUTING.md`, which the
   development skill follows for a contributor's own agent.
 
 **Features** decide which tools the voice model sees. Only switched-on

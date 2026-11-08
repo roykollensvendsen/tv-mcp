@@ -12,7 +12,18 @@ import ast
 import pathlib
 
 PACKAGE = pathlib.Path(__file__).parent.parent / "src" / "tv_mcp"
-CORE = {"settings", "driver", "media", "service", "power", "discovery", "simulator", "__init__", "_version"}
+CORE = {
+    "settings",
+    "driver",
+    "media",
+    "service",
+    "power",
+    "conformance",
+    "discovery",
+    "simulator",
+    "__init__",
+    "_version",
+}
 TOP = {"server", "cli"}
 
 

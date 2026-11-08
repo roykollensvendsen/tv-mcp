@@ -84,6 +84,49 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
+## Add a new TV
+
+A new brand or platform is a driver; a new model of a brand already here is
+usually just a data file. Either way, nothing in the core changes, and
+`tests/test_layers.py` refuses a change that makes the core know a brand.
+
+1. **Look first, touch nothing.** Find what the TV answers without pairing,
+   sound or a prompt (an information page, an SSDP answer). Record it, with the
+   date, in a skill for that family under `.claude/skills/`, the way
+   `samsung-tvs-2022-frame` does. Replace every address with one from
+   `192.0.2.0/24` and every MAC with one from `00:00:5E:00:53:xx`; the
+   private-data scan refuses anything else.
+2. **Write the driver's tests first**, against a recorded answer, with an
+   `httpx.MockTransport` in place of the network. A driver takes its client in
+   its constructor so that no test needs a TV.
+3. **Write the driver** in `src/tv_mcp/drivers/<key>.py`. It implements
+   `tv_mcp.driver.Driver`: `key`, `ssdp_target`, `recognises()` and
+   `read_info()`. Add `switch()` or `close_app()` only with their tests, and
+   only once the owner of a real TV has watched them work.
+4. **Run the conformance kit** on it, and keep that test:
+
+   <!-- not run: a test a contributor writes, with their own driver -->
+   ```python
+   from tv_mcp.conformance import check
+
+   def test_my_driver_conforms():
+       problems = asyncio.run(check(MyDriver(client), answers="192.0.2.10", silent="192.0.2.99"))
+       assert problems == []
+   ```
+
+   It checks that the driver answers rather than raises, reports a known power
+   state, gives None for a TV that is not there, and keeps the rules of any
+   extra method it has.
+5. **Add a model data file** per model family in `src/tv_mcp/models/`, like
+   `2022-frame.toml`: the setup steps, what each one checks, and a dated note of
+   what happened on a real set.
+6. **Wire it in** in `src/tv_mcp/cli.py`, the one place that knows every
+   driver, and let the owner pick it with `driver = "<key>"` in the settings.
+
+A change that gives the voice new tools raises the budget in
+`tests/test_context_budget.py` on purpose, or puts them in a feature that is
+off by default.
+
 ## Documents that restate a fact
 
 Point rather than copy. Where a document has to copy anyway, two test files
