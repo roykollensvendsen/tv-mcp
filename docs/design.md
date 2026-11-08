@@ -64,7 +64,7 @@ and `garage_confirm`.
 | `tv_key` | one remote key: play, pause, back, home, arrows, OK | no power key; that goes through `tv_power_*` |
 | `tv_volume` | up, down or mute | at most five steps per call |
 | `media_search` | finds a film or episode in Jellyfin by name | read-only |
-| `media_play` | plays an item on a named TV: opens Jellyfin, waits for its session, and starts the item | asks first if the TV is off, through `tv_power_on` |
+| `media_play` | `media_play(title, tv)`: finds the title, switches the TV on if it is off, opens Jellyfin, waits for its session, and starts the item | no extra question: naming a film and a TV is the request (see Safety 1); it refuses when the title matches more than one item and says which ones |
 | `media_control` | pause, resume, stop, or jump back or forward on the TV's session | |
 
 Two more tools find the TVs and get each one ready:
@@ -111,13 +111,48 @@ the menu names in English and Norwegian, the steps that differ from the
 defaults, and what has been tested on a real TV, with the date. A step with no
 model file falls back to the general instructions and says so.
 
-A TV is named as the owner names it ("The Frame", "the bedroom") by aliases in
-the settings file, never by address.
+A TV is named the way the owner says it, usually by room ("the living room",
+"the bedroom") or by its name ("The Frame"). Each TV has one entry in the
+local settings file, `~/.config/tv-mcp/config.toml`, holding its friendly name,
+any other names it answers to, and its address, hardware address and pairing
+token. The repository holds only an example with documentation addresses:
+
+```toml
+[tvs.living-room]
+names = ["the living room", "The Frame"]
+address = "192.0.2.10"
+mac = "00:00:5E:00:53:01"
+```
+
+`tv_setup` writes the entry when a TV is set up and asks the owner what to
+call it. A name that matches two TVs is refused rather than guessed. Every
+tool that takes a TV takes one of these names, never an address.
+
+## Apps on the TVs
+
+Only one app has to be on each TV: **Jellyfin**. It has to stay signed in to
+the server ("remember me"), because a TV turns up in Jellyfin's list of
+sessions, which `media_play` needs, only once the app is open and signed in.
+
+No helper app is needed for the rest:
+
+| Need | What does it | App needed |
+|---|---|---|
+| Keys, opening apps, Art Mode | the TV's own remote API on ports 8001 and 8002, which samsungtvws speaks | none; the TV asks once to allow the computer |
+| Switching on over the network | the TV's own *Power On with Mobile* setting | none |
+| Volume | the remote API, or the TV's own UPnP volume control | none |
+
+Should a model need a helper app after all, it goes in that model's data file
+with why it is needed, and `tv_setup` asks the owner before installing it.
 
 ## Safety
 
-1. Switching a TV on or off waits for a spoken yes. A film never starts on a
-   TV that is off without that yes.
+1. Switching a TV on or off on its own (`tv_power_on`, `tv_power_off`)
+   waits for a spoken yes. The one exception is the owner's own main use:
+   one sentence naming a film and a TV ("play A New Hope on The Frame") is
+   itself the request, so `media_play` switches that TV on without asking
+   again. The owner chose this on 2026-11-08. It never switches a TV off,
+   and it never acts on a TV the sentence did not name.
 2. Nothing is retried, and nothing happens on a schedule.
 3. Nothing leaves the home network. No cloud services are used, and the
    SmartThings route is ruled out because its personal tokens now expire
@@ -151,7 +186,6 @@ with the Frame's model file. The next slices are `media_search` and
 
 ## Open questions for the owner
 
-- Should `media_play` on a TV that is already on just start, or ask too?
 - Which apps besides Jellyfin go on the list?
 - Should the Q68CA get Jellyfin as well? It needs developer mode in the same
   way.
