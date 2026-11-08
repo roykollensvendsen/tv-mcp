@@ -54,8 +54,11 @@ Each family's sub-skill says how a step differs on that family.
    `docker run --ulimit nofile=1024:65536 --rm ghcr.io/georift/install-jellyfin-tizen <tv>`,
    run by the owner. Success ends with `Tizen application is successfully installed.`
    No Samsung certificate was needed on 2022 firmware.
-5. **Pair the remote API** (port 8002): the TV shows Allow once. Only when the
-   owner is there and says it suits.
+5. **Pair the remote API** (port 8002): the TV shows a box asking to allow
+   the app, once. Only when the owner is at the TV with the remote and says it
+   suits; tell them first what will appear and to choose Allow within about 30
+   seconds. The token goes in a private file in the owner's settings folder,
+   never the repository. Missed or denied: see the family's sub-skill.
 6. **Wake over the network**: Settings → General → Network → Expert Settings →
    *Power On with Mobile* and *IP Remote*. Over wireless it is unreliable from
    deep standby; plan to fall back to the power key when the TV is in Art Mode.

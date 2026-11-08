@@ -30,7 +30,18 @@ about this family, each with the date it was seen.
 4. **Install:** the owner ran the georift installer; it connected on 26101,
    found the TV as `QE55LS03BAUXXC`, and installed with the default
    development certificate. No Samsung account was needed.
-5. **Pairing and wake:** not done yet.
+5. **Pairing:** with the owner sitting at the TV, remote in hand, the first
+   connection to the remote API (port 8002) showed a box asking to allow
+   *tv-mcp*. Allow was chosen within the 30 seconds and a token came back. It
+   is saved in a private file in the owner's settings folder, outside the
+   repository, so the box does not come again. Tell the owner what will appear
+   and what to press *before* connecting, and never connect while nobody is at
+   the TV. If the box was missed, timed out or got Deny: connect again with the
+   owner there; after a Deny, allow or delete *tv-mcp* under Settings → General
+   → External Device Manager → Device Connection Manager → Device List first.
+6. **Playing:** `tv_play` started A New Hope on the open Jellyfin app through
+   Jellyfin's session API. The app's session is found by the TV's address.
+7. **Wake:** not tested yet.
 
 ## Behaviour to design around
 

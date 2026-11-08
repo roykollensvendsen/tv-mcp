@@ -1,0 +1,47 @@
+# The 2022 Samsung The Frame, Tizen 6.5: what tv_setup tells the owner, step by
+# step, and what it checks over the network after each one. Tested on a real
+# set on 2026-11-08. No addresses here; the TV's address is in the owner's
+# settings file. Read by tv_setup once it is built (docs/design.md).
+
+family = "2022-frame"
+recognise = { model_code_prefix = "22_", art_mode_capable = true }
+platform = "Tizen 6.5"
+
+[[step]]
+id = "store"
+say = "On the TV, open Apps, choose the magnifier at the top of the Apps page, and search for Jellyfin. The search on the home screen shows only films."
+check = "the Jellyfin app is installed"
+note = "2026-11-08: Jellyfin was not in the Norwegian store for this model."
+
+[[step]]
+id = "developer-mode"
+say = "Open Apps, scroll to the very bottom and open App Settings. Type 1 2 3 4 5 there, not on the Apps page itself. Switch Developer mode on, enter this computer's address, and press OK."
+check = "the information page reports developerMode 1 and this computer's address"
+note = "2026-11-08: 12345 on the Apps page did nothing, with the remote's numbers or SmartThings. Inside App Settings the window opened at once. The first try was not saved; do it again if the check fails."
+
+[[step]]
+id = "full-restart"
+say = "Hold the power button until the Samsung logo shows. If holding it only switches the TV off, pull the plug for a minute and plug it back in."
+check = "port 26101 answers"
+note = "2026-11-08: the information page said developer mode was on while 26101 stayed closed; it opened about two and a half minutes after a full restart."
+
+[[step]]
+id = "install-jellyfin"
+asks = true
+say = "The owner runs the installer: docker run --ulimit nofile=1024:65536 --rm ghcr.io/georift/install-jellyfin-tizen <the TV's address>"
+check = "the output ends with 'Tizen application is successfully installed.'"
+note = "2026-11-08: installed with the default development certificate; no Samsung account was needed."
+
+[[step]]
+id = "pairing"
+asks = true
+say = "Sit at the TV with the remote. In a few seconds the TV shows a box saying tv-mcp wants to connect: choose Allow. You have about 30 seconds."
+check = "a pairing token comes back and is saved in the owner's settings folder"
+note = "2026-11-08: allowed on the first try. It is asked only once: the token is kept in a private file outside the repository. If the box was missed, ran out, or Deny was chosen, run the step again; after a Deny, allow the device under Settings > General > External Device Manager > Device Connection Manager > Device List, or delete it there and pair again."
+
+[[step]]
+id = "wake"
+asks = true
+say = "In Settings, General, Network, Expert Settings, switch on Power On with Mobile and IP Remote."
+check = "the TV wakes from standby when tv-mcp sends the wake signal, with the owner's yes"
+note = "Not yet tested. Over wireless, waking from deep standby is unreliable; from Art Mode the power key works instead."

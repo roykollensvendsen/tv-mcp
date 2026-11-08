@@ -19,3 +19,5 @@ scripts/.mutate-recovery.json
 
 # A Jellyfin API key belongs in ~/.config/tv-mcp, never here.
 jellyfin-key
+# A TV pairing token belongs in ~/.config/tv-mcp, never here.
+*-token
