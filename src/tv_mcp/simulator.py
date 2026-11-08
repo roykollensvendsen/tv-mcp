@@ -7,7 +7,7 @@ real network, and it never touches the network.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from tv_mcp.driver import TvInfo
 from tv_mcp.media import MediaItem, Session
@@ -35,6 +35,12 @@ class SimulatedTv:
 
     key = "samsung-tizen"
     ssdp_target = "urn:example:simulated-tv"
+
+    apps: ClassVar[dict[str, str]] = {"jellyfin": "sim.Jellyfin"}
+
+    async def close_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to close
+        """Pretend to close the app."""
+        return True
 
     def recognises(self, announcement: bytes) -> bool:  # noqa: ARG002 - the simulated TV is always heard
         """Every announcement counts."""
@@ -74,6 +80,10 @@ class SimulatedLibrary:
     async def play(self, session_id: str, item_id: str) -> None:
         """Remember what was played."""
         self.played.append((session_id, item_id))
+
+    async def control(self, session_id: str, command: str) -> None:
+        """Remember the command."""
+        self.played.append((session_id, command))
 
 
 async def _listen(recognises: Callable[[bytes], bool], target: str | None) -> list[str]:  # noqa: ARG001

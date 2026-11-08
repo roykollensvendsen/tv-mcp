@@ -46,3 +46,11 @@ class MediaLibrary(Protocol):
     async def play(self, session_id: str, item_id: str) -> None:
         """Start `item_id` at once in the app with `session_id`."""
         ...
+
+    async def control(self, session_id: str, command: str) -> None:
+        """Send `command` (one of COMMANDS) to what the app is playing."""
+        ...
+
+
+#: What can be done to something playing.
+COMMANDS = ("pause", "resume", "stop")

@@ -20,7 +20,7 @@ def _call(server, tool, arguments=None):
 
 def test_only_a_switched_on_feature_adds_tools():
     default = sorted(_tools(build_server(simulated_service(), simulated=True)))
-    assert default == ["tv_play", "tv_search", "tv_status"]
+    assert default == ["tv_control", "tv_play", "tv_search", "tv_status"]
     both = build_server(simulated_service(), features=["status", "setup"], simulated=True)
     assert sorted(_tools(both)) == ["tv_discover", "tv_status"]
     assert _tools(build_server(simulated_service(), features=[], simulated=True)) == {}

@@ -56,3 +56,9 @@ name = "a title that matches several items is refused, naming them"
 file = "src/tv_mcp/service.py"
 find = 'return _refused\(f"\{title!r\} could be: \{options\}\. Which one\?"\)'
 replace = 'return found[0].id'
+
+[[rule]]
+name = "a hands-off TV is never played on or controlled"
+file = "src/tv_mcp/service.py"
+find = '        if tv\.hands_off:'
+replace = 'if False:'

@@ -7,15 +7,16 @@ the network is passed in, so the tests need neither a TV nor a network.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from tv_mcp.media import COMMANDS
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from tv_mcp.driver import Driver, TvInfo
-    from tv_mcp.media import MediaItem, MediaLibrary
+    from tv_mcp.driver import ClosesApps, Driver, TvInfo
+    from tv_mcp.media import MediaItem, MediaLibrary, Session
 
 LEFT_ALONE = "left alone"
 
@@ -78,23 +79,69 @@ class TvService:
         found = await self.library.search(term)
         return {"items": [{"title": i.title, "year": i.year, "kind": i.kind} for i in found]}
 
-    async def play(self, title: str, name: str) -> dict[str, Any]:
-        """Start `title` on the TV called `name`, through Jellyfin on that TV."""
+    def _target(self, name: str) -> Tv | dict[str, Any]:
+        """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""
         try:
             tv = find_tv(self.settings, name)
         except (UnknownTvError, AmbiguousTvError) as refusal:
             return _refused(str(refusal))
+        # RULE: a hands-off TV is never played on or controlled
         if tv.hands_off:
             return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
         if self.library is None:
             return _refused(NO_LIBRARY)
+        return tv
+
+    async def _session(self, tv: Tv) -> Session | None:
+        assert self.library is not None  # noqa: S101 - _target checked it
+        return next(
+            (s for s in await self.library.sessions() if s.address == tv.address and s.controllable), None
+        )
+
+    async def close_app(self, app: str, name: str) -> dict[str, Any]:
+        """Close `app` on the TV called `name`."""
+        try:
+            tv = find_tv(self.settings, name)
+        except (UnknownTvError, AmbiguousTvError) as refusal:
+            return _refused(str(refusal))
+        if tv.hands_off or tv.address is None:
+            return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
+        driver = self.drivers.get(tv.driver)
+        apps: Mapping[str, str] = getattr(driver, "apps", {})
+        app_id = apps.get(app.casefold())
+        if driver is None or app_id is None:
+            known = ", ".join(a.capitalize() for a in apps) or "none"
+            return _refused(f"I cannot close {app!r} on {tv.spoken}. Apps I know: {known}.")
+        closer = cast("ClosesApps", driver)
+        if not await closer.close_app(tv.address, app_id):
+            return _refused(f"{tv.spoken} did not close {app}.")
+        return {"outcome": "done", "say": f"Closed {app} on {tv.spoken}."}
+
+    async def control(self, command: str, name: str) -> dict[str, Any]:
+        """Pause, resume or stop what is playing on the TV called `name`."""
+        if command not in COMMANDS:
+            return _refused(f"I can {', '.join(COMMANDS)}; not {command!r}.")
+        tv = self._target(name)
+        if not isinstance(tv, Tv):
+            return tv
+        session = await self._session(tv)
+        if session is None or self.library is None:
+            return _refused(f"Jellyfin is not open on {tv.spoken}.")
+        await self.library.control(session.id, command)
+        done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
+        return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
+
+    async def play(self, title: str, name: str) -> dict[str, Any]:
+        """Start `title` on the TV called `name`, through Jellyfin on that TV."""
+        tv = self._target(name)
+        if not isinstance(tv, Tv):
+            return tv
+        assert self.library is not None  # noqa: S101 - _target checked it
         found = await self.library.search(title)
         chosen = _choose(title, found)
         if not isinstance(chosen, str):
             return chosen
-        session = next(
-            (s for s in await self.library.sessions() if s.address == tv.address and s.controllable), None
-        )
+        session = await self._session(tv)
         if session is None:
             return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
         item = next(i for i in found if i.id == chosen)

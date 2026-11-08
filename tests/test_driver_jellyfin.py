@@ -80,3 +80,15 @@ def test_a_server_that_does_not_answer_gives_an_empty_search():
         raise httpx.ConnectError(message, request=request)
 
     assert _run(handler, lambda j: j.search("anything")) == []
+
+
+def test_control_sends_stop_pause_and_unpause():
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.path)
+        return httpx.Response(204)
+
+    for command in ("stop", "pause", "resume"):
+        _run(handler, lambda j, c=command: j.control("s1", c))
+    assert seen == ["/Sessions/s1/Playing/Stop", "/Sessions/s1/Playing/Pause", "/Sessions/s1/Playing/Unpause"]

@@ -109,3 +109,36 @@ def test_without_a_library_play_says_jellyfin_is_not_set_up():
     answer = asyncio.run(_service(None).play("A New Hope", "The Frame"))
     assert answer["outcome"] == "refused"
     assert "Jellyfin" in answer["say"]
+
+
+class ControlLibrary(FakeLibrary):
+    def __init__(self, sessions):
+        super().__init__([HOPE], sessions)
+        self.commands = []
+
+    async def control(self, session_id, command):
+        self.commands.append((session_id, command))
+
+
+def test_stop_pause_and_resume_go_to_the_named_tvs_session():
+    library = ControlLibrary([FRAME_SESSION])
+    service = _service(library)
+    for command in ("pause", "resume", "stop"):
+        answer = asyncio.run(service.control(command, "The Frame"))
+        assert answer["outcome"] == "done", answer
+    assert library.commands == [("s1", "pause"), ("s1", "resume"), ("s1", "stop")]
+
+
+def test_an_unknown_command_is_refused():
+    library = ControlLibrary([FRAME_SESSION])
+    answer = asyncio.run(_service(library).control("explode", "The Frame"))
+    assert answer["outcome"] == "refused"
+    assert library.commands == []
+
+
+def test_a_hands_off_tv_is_never_played_on_or_controlled():
+    upstairs_session = Session(id="s2", address="192.0.2.11", client="Jellyfin for Tizen", controllable=True)
+    library = ControlLibrary([upstairs_session])
+    answer = asyncio.run(_service(library, LIVING, UPSTAIRS).control("stop", "upstairs"))
+    assert answer["outcome"] == "refused"
+    assert library.commands == []

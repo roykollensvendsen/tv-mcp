@@ -15,7 +15,10 @@ something come with the slices that need them, each with its own safety rule.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -45,4 +48,15 @@ class Driver(Protocol):
 
     async def read_info(self, address: str) -> TvInfo | None:
         """The TV's own description of itself, or None when it does not answer."""
+        ...
+
+
+class ClosesApps(Protocol):
+    """A driver that can also close an app on its TV."""
+
+    #: The apps it knows, by lower-case spoken name, with the TV's id for each.
+    apps: Mapping[str, str]
+
+    async def close_app(self, address: str, app_id: str) -> bool:
+        """Close the app; False when the TV did not do it."""
         ...

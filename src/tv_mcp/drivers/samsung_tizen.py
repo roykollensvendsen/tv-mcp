@@ -10,7 +10,7 @@ which is the first two digits of the model code (``22_PONTUSM_FTV``).
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 
@@ -55,9 +55,19 @@ class SamsungTizen:
     key = "samsung-tizen"
     ssdp_target = "urn:samsung.com:device:RemoteControlReceiver:1"
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    #: Apps it can close, by spoken name. Jellyfin's id is the one the
+    #: sideloaded app has; the others are Samsung's store ids.
+    apps: ClassVar[dict[str, str]] = {
+        "jellyfin": "AprZAARz4r.Jellyfin",
+        "netflix": "3201907018807",
+        "youtube": "111299001912",
+    }
+
+    def __init__(self, client: httpx.AsyncClient, *, tls_client: httpx.AsyncClient | None = None) -> None:
         """Use `client` for every request, so its connections are shared."""
         self._client = client
+        # The TV's port 8002 answers with a certificate it signed itself.
+        self._tls = tls_client or httpx.AsyncClient(verify=False)  # noqa: S501 - the TV's own certificate
 
     def recognises(self, announcement: bytes) -> bool:
         """Whether an SSDP announcement or answer comes from a Samsung TV."""
@@ -68,3 +78,19 @@ class SamsungTizen:
         """The TV's information page, in the core's words."""
         page = await fetch_info(address, self._client)
         return parse_info(page) if page is not None else None
+
+    async def close_app(self, address: str, app_id: str) -> bool:
+        """Close `app_id` on the TV; no pairing is needed for this.
+
+        An app that is not running counts as closed. The TV is not asked to
+        close it, because a 2022 Frame drops the connection when it is.
+        """
+        url = f"https://{address}:8002/api/v2/applications/{app_id}"
+        try:
+            state = await self._tls.get(url, timeout=5)
+            if state.is_success and state.json().get("running") is False:
+                return True
+            response = await self._tls.delete(url, timeout=5)
+        except (httpx.HTTPError, ValueError):
+            return False
+        return response.is_success

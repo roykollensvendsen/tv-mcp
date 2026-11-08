@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 def register(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
     """Add ``tv_status``."""
 
-    @server.tool(description="Is a TV on, in standby or off? 'tv': the name the owner used; omit for all.")
+    @server.tool(description="Is a TV on? 'tv' as the owner said it; omit for all.")
     async def tv_status(tv: str | None = None) -> dict[str, Any]:
         reports = await service.status(tv)
         success = all(r["state"] != "refused" for r in reports)

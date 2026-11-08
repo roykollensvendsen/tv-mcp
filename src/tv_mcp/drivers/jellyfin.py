@@ -72,6 +72,19 @@ class Jellyfin:
         )
         response.raise_for_status()
 
+    async def control(self, session_id: str, command: str) -> None:
+        """Pause, resume or stop what the session is playing."""
+        response = await self._client.post(
+            f"{self._url}/Sessions/{session_id}/Playing/{JELLYFIN_COMMANDS[command]}",
+            headers=self._headers,
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+
+
+#: Jellyfin's name for each command in tv_mcp.media.COMMANDS.
+JELLYFIN_COMMANDS = {"pause": "Pause", "resume": "Unpause", "stop": "Stop"}
+
 
 def _session(page: dict[str, Any]) -> Session:
     endpoint = page.get("RemoteEndPoint")

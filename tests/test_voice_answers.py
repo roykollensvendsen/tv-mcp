@@ -9,7 +9,7 @@ from tv_mcp.tools import FEATURES
 
 #: The tools the owner approves in claude-voice. Changing this list, or a
 #: tool's inputs, means the owner has to approve the plugin again.
-APPROVED_DEFAULT = ["tv_play", "tv_search", "tv_status"]
+APPROVED_DEFAULT = ["tv_control", "tv_play", "tv_search", "tv_status"]
 
 
 def _server(features=None):
@@ -40,6 +40,10 @@ def test_every_answer_has_a_say_line_and_success():
         ("tv_play", {"title": "A New Hope", "tv": "The Frame"}),
         ("tv_play", {"title": "star wars", "tv": "The Frame"}),
         ("tv_discover", {}),
+        ("tv_control", {"command": "stop", "tv": "The Frame"}),
+        ("tv_control", {"command": "stop", "tv": "the kitchen"}),
+        ("tv_close_app", {"app": "Jellyfin", "tv": "The Frame"}),
+        ("tv_close_app", {"app": "Minesweeper", "tv": "The Frame"}),
     ]
     for tool, arguments in calls:
         answer = _call(server, tool, arguments)
