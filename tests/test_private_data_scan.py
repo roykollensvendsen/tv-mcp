@@ -30,3 +30,12 @@ def test_a_value_from_the_settings_file_is_never_committed():
 
 def test_the_tracked_tree_is_clean():
     assert private_data_scan.main(["--tracked"]) == 0
+
+
+def test_only_private_settings_count_not_the_friendly_names(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[jellyfin]\napi_key = "abc123secret"\n'
+        '[tvs.den]\nnames = ["the living room"]\naddress = "192.0.2.77"\n'
+    )
+    assert private_data_scan.private_values(path) == {"abc123secret", "192.0.2.77"}

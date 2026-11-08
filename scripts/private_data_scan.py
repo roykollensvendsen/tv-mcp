@@ -36,20 +36,23 @@ DOCUMENTATION_MAC = re.compile(r"^00[:-]00[:-]5E[:-]00[:-]53[:-]", re.IGNORECASE
 MIN_SECRET = 6  # shorter values ("true", a port) would match ordinary text
 
 
-def _values(settings: pathlib.Path) -> set[str]:
-    """Every string value in the owner's settings file, at any depth."""
+#: The settings that say where the home is or unlock something. A TV's friendly
+#: names ("the living room") are not among them: they are meant to be said.
+PRIVATE_KEYS = {"address", "mac", "url", "api_key", "token"}
+
+
+def private_values(settings: pathlib.Path) -> set[str]:
+    """The private values in the owner's settings file, at any depth."""
     if not settings.is_file():
         return set()
     out: set[str] = set()
-    stack: list[object] = [tomllib.loads(settings.read_text())]
+    stack: list[dict[str, object]] = [tomllib.loads(settings.read_text())]
     while stack:
-        item = stack.pop()
-        if isinstance(item, dict):
-            stack.extend(item.values())
-        elif isinstance(item, list):
-            stack.extend(item)
-        elif isinstance(item, str) and len(item) >= MIN_SECRET:
-            out.add(item)
+        for key, value in stack.pop().items():
+            if isinstance(value, dict):
+                stack.append(value)
+            elif key in PRIVATE_KEYS and isinstance(value, str) and len(value) >= MIN_SECRET:
+                out.add(value)
     return out
 
 
@@ -75,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tracked", action="store_true", help="scan every tracked file")
     args = parser.parse_args(argv)
-    secrets = _values(SETTINGS)
+    secrets = private_values(SETTINGS)
     bad = 0
     for path in _files(tracked=args.tracked):
         try:
