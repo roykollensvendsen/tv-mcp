@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.tools.say import tv_lines
+
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
@@ -21,4 +23,5 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
         )
     )
     async def tv_discover(full: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002 - a tool argument
-        return {"simulated": simulated, **await service.discover(full=full)}
+        found = await service.discover(full=full)
+        return {"success": True, "say": tv_lines(found["tvs"]), "simulated": simulated, **found}

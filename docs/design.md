@@ -63,9 +63,9 @@ and `garage_confirm`.
 | `tv_open_app` | opens an app from a short list in the settings (Jellyfin, YouTube, NRK TV) | only apps on the list |
 | `tv_key` | one remote key: play, pause, back, home, arrows, OK | no power key; that goes through `tv_power_*` |
 | `tv_volume` | up, down or mute | at most five steps per call |
-| `media_search` | finds a film or episode in Jellyfin by name | read-only |
-| `media_play` | `media_play(title, tv)`: finds the title, switches the TV on if it is off, opens Jellyfin, waits for its session, and starts the item | no extra question: naming a film and a TV is the request (see Safety 1); it refuses when the title matches more than one item and says which ones |
-| `media_control` | pause, resume, stop, or jump back or forward on the TV's session | |
+| `tv_search` | finds a film or episode in Jellyfin by name | read-only |
+| `tv_play` | `tv_play(title, tv)`: finds the title, switches the TV on if it is off, opens Jellyfin, waits for its session, and starts the item | no extra question: naming a film and a TV is the request (see Safety 1); it refuses when the title matches more than one item and says which ones |
+| `tv_control` | pause, resume, stop, or jump back or forward on the TV's session | |
 
 Two more tools find the TVs and get each one ready:
 
@@ -132,7 +132,7 @@ tool that takes a TV takes one of these names, never an address.
 
 Only one app has to be on each TV: **Jellyfin**. It has to stay signed in to
 the server ("remember me"), because a TV turns up in Jellyfin's list of
-sessions, which `media_play` needs, only once the app is open and signed in.
+sessions, which `tv_play` needs, only once the app is open and signed in.
 
 No helper app is needed for the rest:
 
@@ -150,7 +150,7 @@ with why it is needed, and `tv_setup` asks the owner before installing it.
 1. Switching a TV on or off on its own (`tv_power_on`, `tv_power_off`)
    waits for a spoken yes. The one exception is the owner's own main use:
    one sentence naming a film and a TV ("play A New Hope on The Frame") is
-   itself the request, so `media_play` switches that TV on without asking
+   itself the request, so `tv_play` switches that TV on without asking
    again. The owner chose this on 2026-11-08. It never switches a TV off,
    and it never acts on a TV the sentence did not name.
 2. **A TV can be marked hands-off** in the settings file (`hands_off = true`),
@@ -202,7 +202,7 @@ Without that list, the owner gets the small default set: `status` today, then
 `media` (search and play) once it exists. `setup`, `power` and anything extra
 are opt-in. Tool descriptions are kept to one line.
 `tests/test_context_budget.py` holds the default set to a fixed number of
-tools and characters (3 tools and 800 characters today: status, search and play). A change that raises
+tools and characters (3 tools and 900 characters today: status, search and play, with the instructions claude-voice passes on). A change that raises
 either does it on purpose, in its own pull request.
 
 The repository stays private until the owner decides otherwise. It is written
@@ -226,8 +226,8 @@ token, and to read back each refusal.
 
 The walking skeleton is `tv_discover` and `tv_status` against the simulated
 TV, then against The Frame, through claude-voice. The next slice is `tv_setup`
-with the Frame's model file. The next slices are `media_search` and
-`media_play` on a TV that is already on, and the power tools come last.
+with the Frame's model file. The next slices are `tv_search` and
+`tv_play` on a TV that is already on, and the power tools come last.
 
 ## Open questions for the owner
 

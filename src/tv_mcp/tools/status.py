@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.tools.say import tv_lines
+
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
@@ -16,4 +18,6 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
 
     @server.tool(description="Is a TV on, in standby or off? 'tv': the name the owner used; omit for all.")
     async def tv_status(tv: str | None = None) -> dict[str, Any]:
-        return {"simulated": simulated, "tvs": await service.status(tv)}
+        reports = await service.status(tv)
+        success = all(r["state"] != "refused" for r in reports)
+        return {"success": success, "say": tv_lines(reports), "simulated": simulated, "tvs": reports}

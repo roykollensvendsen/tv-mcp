@@ -20,8 +20,9 @@ if TYPE_CHECKING:
     from tv_mcp.service import TvService
 
 INSTRUCTIONS = (
-    "The owner's TVs. Name a TV as the owner said it (a room, or a name). Read each 'say' aloud. "
-    "Never try to reach a TV reported 'left alone'."
+    "Controls the owner's TVs and starts films from their Jellyfin library. Name a TV as the owner "
+    "said it (a room, or a name), and read each 'say' aloud. Never switch a TV on or off without "
+    "asking, and never try to reach a TV reported 'left alone'."
 )
 SIMULATED = "SIMULATED TVs, not real ones: say so. "
 

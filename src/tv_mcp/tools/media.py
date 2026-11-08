@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.tools.say import items_line
+
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
@@ -12,12 +14,15 @@ if TYPE_CHECKING:
 
 
 def register(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
-    """Add ``media_search`` and ``media_play``."""
+    """Add ``tv_search`` and ``tv_play``."""
 
     @server.tool(description="Find films and episodes by title.")
-    async def media_search(title: str) -> dict[str, Any]:
-        return {"simulated": simulated, **await service.search(title)}
+    async def tv_search(title: str) -> dict[str, Any]:
+        found = await service.search(title)
+        say = found.get("say") or items_line(title, found["items"])
+        return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
 
     @server.tool(description="Play a film or episode on a TV, both named as the owner said them.")
-    async def media_play(title: str, tv: str) -> dict[str, Any]:
-        return {"simulated": simulated, **await service.play(title, tv)}
+    async def tv_play(title: str, tv: str) -> dict[str, Any]:
+        answer = await service.play(title, tv)
+        return {"success": answer["outcome"] == "playing", "simulated": simulated, **answer}

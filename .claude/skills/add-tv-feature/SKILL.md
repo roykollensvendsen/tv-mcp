@@ -50,7 +50,7 @@ A rule (a refusal, a limit, a safety check) is one line marked
 
 ## 4. Make the tool small enough for a voice
 
-- Named after the plugin: `tv_…` or `media_…`.
+- Named after the plugin: every tool starts with `tv_`, which claude-voice requires.
 - A one-line description. Every character is read by the model on every turn.
 - Arguments the owner would say: a title, a TV's friendly name, never an
   address or an id.
@@ -65,7 +65,7 @@ A rule (a refusal, a limit, a safety check) is one line marked
 - Switching a TV on or off, and anything that makes sound or shows a pairing
   prompt, waits for the owner's spoken yes through a confirmation token (the
   garage door's `request`/`confirm` pattern). The one exception is
-  `media_play` on a TV the owner named in the same sentence.
+  `tv_play` on a TV the owner named in the same sentence.
 - A TV marked `hands_off` is never sent anything, not even a probe. Check the
   owner's settings before any test against real hardware. Today the second TV
   is hands-off: it is where the children sleep.
