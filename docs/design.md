@@ -99,7 +99,7 @@ The instructions that depend on the model are kept in data files, one per
 model family, so that a new TV is added with a file rather than with code:
 `src/tv_mcp/models/<year>-<family>.toml`. The first two are `2022-frame.toml`
 (The Frame, Tizen 6.5, tested on 2026-11-08) and `2023-tizen7.toml` (the
-Q68CA, not yet tested). Both TVs go through the same five steps. The Q68CA
+Q68CA, not yet tested and **on hold**: the owner has asked that nothing is sent to it for now, so it is marked hands-off and set up later). Both TVs go through the same five steps. The Q68CA
 has one step before them: **the TV has to be reachable on the network while it
 is off.** In Settings → General → Network → Expert Settings, *Power On with
 Mobile* and *IP Remote* are switched on. Under External Device Manager →
