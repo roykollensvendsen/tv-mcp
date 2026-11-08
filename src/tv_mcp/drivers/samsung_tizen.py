@@ -9,12 +9,52 @@ which is the first two digits of the model code (``22_PONTUSM_FTV``).
 
 from __future__ import annotations
 
+import asyncio
+import pathlib
 import re
-from typing import Any, ClassVar
+import socket
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 import httpx
 
 from tv_mcp.driver import TvInfo
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from tv_mcp.settings import Tv
+
+#: How long the power key is held to switch off; a short press only goes to Art Mode.
+HOLD_TO_SWITCH_OFF = 3.0
+
+
+class Remote(Protocol):
+    """The TV's paired remote-control connection (port 8002)."""
+
+    def send_key(self, key: str) -> None: ...  # noqa: D102
+    def hold_key(self, key: str, seconds: float) -> None: ...  # noqa: D102
+    def close(self) -> None: ...  # noqa: D102
+
+
+def _samsung_remote(address: str, token_file: pathlib.Path) -> Remote:  # pragma: no cover - needs a real TV
+    from samsungtvws import SamsungTVWS  # noqa: PLC0415 - only loaded when a TV is switched
+
+    remote: Remote = SamsungTVWS(
+        host=address, port=8002, name="tv-mcp", timeout=10, token_file=str(token_file)
+    )
+    return remote
+
+
+def magic_packet(mac: str) -> bytes:
+    """A Wake-on-LAN packet: six 0xFF bytes, then the MAC sixteen times."""
+    return b"\xff" * 6 + bytes.fromhex(mac.replace(":", "").replace("-", "")) * 16
+
+
+def _send_wake(mac: str) -> None:  # pragma: no cover - sends to the network
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(magic_packet(mac), ("255.255.255.255", 9))
+
 
 #: Tizen version by model year, from Samsung's release history.
 TIZEN_BY_YEAR = {2020: "5.5", 2021: "6.0", 2022: "6.5", 2023: "7.0", 2024: "8.0", 2025: "9.0"}
@@ -63,9 +103,19 @@ class SamsungTizen:
         "youtube": "111299001912",
     }
 
-    def __init__(self, client: httpx.AsyncClient, *, tls_client: httpx.AsyncClient | None = None) -> None:
-        """Use `client` for every request, so its connections are shared."""
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        tls_client: httpx.AsyncClient | None = None,
+        token_folder: pathlib.Path | None = None,
+        remote: Callable[[str, pathlib.Path], Remote] = _samsung_remote,
+        wake: Callable[[str], None] = _send_wake,
+    ) -> None:
+        """Use `client` for every request; pairing tokens are kept in `token_folder`."""
         self._client = client
+        self._token_folder = token_folder or pathlib.Path("~/.config/tv-mcp").expanduser()
+        self._remote, self._wake = remote, wake
         # The TV's port 8002 answers with a certificate it signed itself.
         self._tls = tls_client or httpx.AsyncClient(verify=False)  # noqa: S501 - the TV's own certificate
 
@@ -94,3 +144,36 @@ class SamsungTizen:
         except (httpx.HTTPError, ValueError):
             return False
         return response.is_success
+
+    async def switch(self, tv: Tv, *, on: bool) -> bool:
+        """Switch `tv` on or off.
+
+        Off holds the power key, since a short press only goes to Art Mode.
+        On presses it when the TV still listens (standby or Art Mode), and
+        otherwise sends a wake packet to its MAC address.
+        """
+        if tv.address is None:
+            return False
+        listening = await fetch_info(tv.address, self._client) is not None
+        if not listening:
+            if not on or tv.mac is None:
+                return False
+            self._wake(tv.mac)
+            return True
+        token_file = self._token_folder / f"{tv.key}-token"
+
+        def press() -> None:
+            remote = self._remote(tv.address or "", token_file)
+            try:
+                if on:
+                    remote.send_key("KEY_POWER")
+                else:
+                    remote.hold_key("KEY_POWER", HOLD_TO_SWITCH_OFF)
+            finally:
+                remote.close()
+
+        try:
+            await asyncio.to_thread(press)
+        except Exception:  # noqa: BLE001 - any failure of the TV's connection means it did not switch
+            return False
+        return True

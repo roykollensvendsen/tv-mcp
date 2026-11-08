@@ -62,3 +62,39 @@ name = "a hands-off TV is never played on or controlled"
 file = "src/tv_mcp/service.py"
 find = '        if tv\.hands_off:'
 replace = 'if False:'
+
+[[rule]]
+name = "a hands-off TV is never switched"
+file = "src/tv_mcp/power.py"
+find = '        if tv\.hands_off:'
+replace = 'if False:'
+
+[[rule]]
+name = "a switch is refused when the TV state is not known"
+file = "src/tv_mcp/power.py"
+find = '        if now is None:'
+replace = 'if False:'
+
+[[rule]]
+name = "a request the TV already satisfies is refused"
+file = "src/tv_mcp/power.py"
+find = '        if now == state:'
+replace = 'if False:'
+
+[[rule]]
+name = "a power token works once"
+file = "src/tv_mcp/power.py"
+find = '        self\._pending = None'
+replace = 'pass'
+
+[[rule]]
+name = "a power token expires after thirty seconds"
+file = "src/tv_mcp/power.py"
+find = '        if self\._clock\(\) - pending\.asked_at > EXPIRES:'
+replace = 'if False:'
+
+[[rule]]
+name = "a switch is refused when the TV changed since the question"
+file = "src/tv_mcp/power.py"
+find = '        if await self\._state\(pending\.tv\) == wanted:'
+replace = 'if False:'

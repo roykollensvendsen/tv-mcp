@@ -41,7 +41,11 @@ about this family, each with the date it was seen.
    → External Device Manager → Device Connection Manager → Device List first.
 6. **Playing:** `tv_play` started A New Hope on the open Jellyfin app through
    Jellyfin's session API. The app's session is found by the TV's address.
-7. **Wake:** not tested yet.
+7. **Power:** `tv_power_confirm` is built and tested with fakes only
+   (2026-11-08); it has not yet switched the real Frame. Off holds the power
+   key three seconds over the paired connection; on presses it from Art Mode
+   or standby, and sends Wake-on-LAN from deep standby. Try it with the owner
+   there, both ways, and record what happened here.
 
 ## Behaviour to design around
 

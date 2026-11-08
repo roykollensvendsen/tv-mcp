@@ -35,7 +35,7 @@ def _with_service(
         if simulate:
             return await work(simulated_service())
         async with httpx.AsyncClient() as client:
-            drivers = {driver.key: driver for driver in (SamsungTizen(client),)}
+            drivers = {driver.key: driver for driver in (SamsungTizen(client, token_folder=path.parent),)}
             library = (
                 Jellyfin(settings.jellyfin_url, settings.jellyfin_key, client)
                 if settings.jellyfin_url and settings.jellyfin_key

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from tv_mcp.tools import apps, media, setup, status
+from tv_mcp.tools import apps, media, power, setup, status
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -26,6 +26,7 @@ FEATURES: dict[str, Register] = {
     "status": status.register,
     "media": media.register,
     "apps": apps.register,
+    "power": power.register,
     "setup": setup.register,
 }
 #: What a settings file with no [features] table gets: the everyday tools only.

@@ -38,6 +38,10 @@ class SimulatedTv:
 
     apps: ClassVar[dict[str, str]] = {"jellyfin": "sim.Jellyfin"}
 
+    async def switch(self, tv: Tv, *, on: bool) -> bool:  # noqa: ARG002 - nothing to switch
+        """Pretend to switch the TV."""
+        return True
+
     async def close_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to close
         """Pretend to close the app."""
         return True

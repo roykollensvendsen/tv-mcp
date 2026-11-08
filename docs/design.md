@@ -57,8 +57,8 @@ and `garage_confirm`.
 | Tool | Does | Safety |
 |---|---|---|
 | `tv_status` | whether each TV is on, in Art Mode or off, and what is playing | read-only |
-| `tv_power_on` | switches a TV on: Wake-on-LAN, or the power key when it is in Art Mode | *asks* |
-| `tv_power_off` | switches a TV off: on the Frame, the power key held for three seconds, since a short press only goes to Art Mode | *asks* |
+| `tv_power_request` | `tv_power_request(state, tv)`: a question to read aloud ("Switch the living room off?") and a one-time token; switches nothing | *asks* |
+| `tv_power_confirm` | `tv_power_confirm(token)`: switches, after the owner's yes. On: the power key when the TV still listens (standby or Art Mode), otherwise Wake-on-LAN. Off: on the Frame, the power key held for three seconds, since a short press only goes to Art Mode | the token works once, expires after 30 s, and only the latest question's counts; refused when the TV changed since the question |
 | `tv_confirm` | carries out the one action the token names | the token is used once and expires after a minute |
 | `tv_open_app` | opens an app from a short list in the settings (Jellyfin, YouTube, NRK TV) | only apps on the list |
 | `tv_key` | one remote key: play, pause, back, home, arrows, OK | no power key; that goes through `tv_power_*` |
@@ -147,8 +147,10 @@ with why it is needed, and `tv_setup` asks the owner before installing it.
 
 ## Safety
 
-1. Switching a TV on or off on its own (`tv_power_on`, `tv_power_off`)
-   waits for a spoken yes. The one exception is the owner's own main use:
+1. Switching a TV on or off on its own waits for a spoken yes:
+   `tv_power_request` asks, and only `tv_power_confirm` with that token
+   switches, as the garage door does. The rule lives in the server, not in the
+   voice's instructions. The one exception is the owner's own main use:
    one sentence naming a film and a TV ("play A New Hope on The Frame") is
    itself the request, so `tv_play` switches that TV on without asking
    again. The owner chose this on 2026-11-08. It never switches a TV off,

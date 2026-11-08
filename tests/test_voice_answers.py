@@ -44,6 +44,9 @@ def test_every_answer_has_a_say_line_and_success():
         ("tv_control", {"command": "stop", "tv": "the kitchen"}),
         ("tv_close_app", {"app": "Jellyfin", "tv": "The Frame"}),
         ("tv_close_app", {"app": "Minesweeper", "tv": "The Frame"}),
+        ("tv_power_request", {"state": "off", "tv": "The Frame"}),
+        ("tv_power_request", {"state": "on", "tv": "The Frame"}),
+        ("tv_power_confirm", {"token": "made-up"}),
     ]
     for tool, arguments in calls:
         answer = _call(server, tool, arguments)
@@ -66,3 +69,12 @@ def test_the_status_line_names_each_tv_and_its_state():
 
 def test_the_instructions_say_never_to_switch_a_tv_on_or_off_without_asking():
     assert "never switch a tv on or off without asking" in _server().instructions.lower()
+
+
+def test_the_power_tools_ask_then_switch_with_the_token():
+    server = _server(list(FEATURES))
+    question = _call(server, "tv_power_request", {"state": "off", "tv": "The Frame"})
+    assert question["success"] is True
+    assert question["say"].endswith("?")
+    done = _call(server, "tv_power_confirm", {"token": question["token"]})
+    assert done["success"] is True, done

@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from tv_mcp.settings import Tv
+
 
 @dataclass(frozen=True)
 class TvInfo:
@@ -59,4 +61,12 @@ class ClosesApps(Protocol):
 
     async def close_app(self, address: str, app_id: str) -> bool:
         """Close the app; False when the TV did not do it."""
+        ...
+
+
+class Switches(Protocol):
+    """A driver that can switch its TV on or off."""
+
+    async def switch(self, tv: Tv, *, on: bool) -> bool:
+        """Switch `tv` on or off; False when it did not answer."""
         ...
