@@ -64,6 +64,17 @@ class ClosesApps(Protocol):
         ...
 
 
+class OpensApps(Protocol):
+    """A driver that can also open an app on its TV."""
+
+    #: The apps it knows, by lower-case spoken name, with the TV's id for each.
+    apps: Mapping[str, str]
+
+    async def open_app(self, address: str, app_id: str) -> bool:
+        """Open the app; False when the TV did not do it."""
+        ...
+
+
 class Switches(Protocol):
     """A driver that can switch its TV on or off."""
 

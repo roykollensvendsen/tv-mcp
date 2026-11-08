@@ -42,6 +42,10 @@ class SimulatedTv:
         """Pretend to switch the TV, when it has an address to reach."""
         return tv.address is not None
 
+    async def open_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to open
+        """Pretend to open the app."""
+        return True
+
     async def close_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to close
         """Pretend to close the app."""
         return True

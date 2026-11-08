@@ -12,7 +12,12 @@ if TYPE_CHECKING:
 
 
 def register(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
-    """Add ``tv_close_app``."""
+    """Add ``tv_open_app`` and ``tv_close_app``."""
+
+    @server.tool(description="Open an app, such as NRK, YouTube or Jellyfin, on a TV that is on.")
+    async def tv_open_app(app: str, tv: str) -> dict[str, Any]:
+        answer = await service.open_app(app, tv)
+        return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}
 
     @server.tool(description="Close an app, such as Jellyfin, on a TV.")
     async def tv_close_app(app: str, tv: str) -> dict[str, Any]:

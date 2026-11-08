@@ -2,6 +2,7 @@
 """Finding a film and starting it on a TV named the way the owner names it."""
 
 import asyncio
+import types
 
 from tv_mcp.media import MediaItem, Session
 from tv_mcp.service import TvService
@@ -142,3 +143,61 @@ def test_a_hands_off_tv_is_never_played_on_or_controlled():
     answer = asyncio.run(_service(library, LIVING, UPSTAIRS).control("stop", "upstairs"))
     assert answer["outcome"] == "refused"
     assert library.commands == []
+
+
+class AppDriver:
+    key = "samsung-tizen"
+    ssdp_target = "x"
+    apps = types.MappingProxyType({"jellyfin": "AprZAARz4r.Jellyfin"})
+
+    def __init__(self, library, *, works=True):
+        self.library, self.works, self.opened = library, works, []
+
+    def recognises(self, announcement):
+        return False
+
+    async def read_info(self, address):
+        return None
+
+    async def open_app(self, address, app_id):
+        self.opened.append(app_id)
+        if self.works:
+            self.library._sessions.append(FRAME_SESSION)  # noqa: SLF001 - the fake library's own list
+        return self.works
+
+
+def _opening_service(library, driver):
+    async def no_wait(seconds):
+        return None
+
+    return TvService(
+        Settings(tvs=(LIVING,)),
+        drivers={driver.key: driver},
+        listen=_no_listen,
+        library=library,
+        sleep=no_wait,
+    )
+
+
+def test_play_opens_jellyfin_on_the_tv_when_it_is_closed_and_then_plays():
+    library = FakeLibrary([HOPE], [])
+    driver = AppDriver(library)
+    answer = asyncio.run(_opening_service(library, driver).play("A New Hope", "The Frame"))
+    assert driver.opened == ["AprZAARz4r.Jellyfin"]
+    assert library.played == [("s1", "a1")]
+    assert answer["outcome"] == "playing"
+
+
+def test_play_gives_up_when_jellyfin_does_not_connect_in_time():
+    library = FakeLibrary([HOPE], [])
+    driver = AppDriver(library, works=False)
+    answer = asyncio.run(_opening_service(library, driver).play("A New Hope", "The Frame"))
+    assert answer["outcome"] == "refused"
+    assert library.played == []
+
+
+def test_play_does_not_open_anything_for_a_title_it_cannot_find():
+    library = FakeLibrary([HOPE], [])
+    driver = AppDriver(library)
+    asyncio.run(_opening_service(library, driver).play("Jaws", "The Frame"))
+    assert driver.opened == []

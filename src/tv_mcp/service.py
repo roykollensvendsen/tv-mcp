@@ -7,15 +7,16 @@ the network is passed in, so the tests need neither a TV nor a network.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from tv_mcp.media import COMMANDS
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
-    from tv_mcp.driver import ClosesApps, Driver, TvInfo
+    from tv_mcp.driver import ClosesApps, Driver, OpensApps, TvInfo
     from tv_mcp.media import MediaItem, MediaLibrary, Session
 
 LEFT_ALONE = "left alone"
@@ -37,9 +38,11 @@ class TvService:
         drivers: Mapping[str, Driver],
         listen: Listen,
         library: MediaLibrary | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """Reach each TV through `drivers`, by key, find TVs with `listen`, and films in `library`."""
         self.settings, self.drivers, self._listen, self.library = settings, drivers, listen, library
+        self._sleep = sleep
 
     async def _read(self, tv: Tv) -> dict[str, Any]:
         # RULE: a hands-off TV is never contacted
@@ -98,24 +101,58 @@ class TvService:
             (s for s in await self.library.sessions() if s.address == tv.address and s.controllable), None
         )
 
-    async def close_app(self, app: str, name: str) -> dict[str, Any]:
-        """Close `app` on the TV called `name`."""
+    def _app(self, app: str, name: str, method: str) -> tuple[Tv, Any, str] | dict[str, Any]:
+        """The TV, its driver and the app's id, or a refusal naming the apps that driver knows."""
         try:
             tv = find_tv(self.settings, name)
         except (UnknownTvError, AmbiguousTvError) as refusal:
             return _refused(str(refusal))
-        if tv.hands_off or tv.address is None:
+        # RULE: a hands-off TV never has an app opened or closed
+        if tv.hands_off or not tv.address:
             return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
         driver = self.drivers.get(tv.driver)
-        apps: Mapping[str, str] = getattr(driver, "apps", {})
+        apps: Mapping[str, str] = (
+            getattr(driver, "apps", {}) if callable(getattr(driver, method, None)) else {}
+        )
         app_id = apps.get(app.casefold())
-        if driver is None or app_id is None:
+        if app_id is None:
             known = ", ".join(a.capitalize() for a in apps) or "none"
-            return _refused(f"I cannot close {app!r} on {tv.spoken}. Apps I know: {known}.")
-        closer = cast("ClosesApps", driver)
-        if not await closer.close_app(tv.address, app_id):
+            return _refused(
+                f"I cannot {method.removesuffix('_app')} {app!r} on {tv.spoken}. Apps I know: {known}."
+            )
+        return tv, driver, app_id
+
+    async def open_app(self, app: str, name: str) -> dict[str, Any]:
+        """Open `app` on the TV called `name`."""
+        found = self._app(app, name, "open_app")
+        if isinstance(found, dict):
+            return found
+        tv, driver, app_id = found
+        if not await cast("OpensApps", driver).open_app(tv.address or "", app_id):
+            return _refused(f"{tv.spoken.capitalize()} did not open {app}. Is it on?")
+        return {"outcome": "done", "say": f"Opened {app} on {tv.spoken}."}
+
+    async def close_app(self, app: str, name: str) -> dict[str, Any]:
+        """Close `app` on the TV called `name`."""
+        found = self._app(app, name, "close_app")
+        if isinstance(found, dict):
+            return found
+        tv, driver, app_id = found
+        if not await cast("ClosesApps", driver).close_app(tv.address or "", app_id):
             return _refused(f"{tv.spoken} did not close {app}.")
         return {"outcome": "done", "say": f"Closed {app} on {tv.spoken}."}
+
+    async def _open_jellyfin(self, tv: Tv) -> Session | None:
+        """Open Jellyfin on `tv` and wait for it to connect to the library."""
+        opened = await self.open_app("jellyfin", tv.key)
+        if opened["outcome"] != "done":
+            return None
+        for _ in range(int(OPEN_WAIT)):
+            await self._sleep(1.0)
+            session = await self._session(tv)
+            if session is not None:
+                return session
+        return None
 
     async def control(self, command: str, name: str) -> dict[str, Any]:
         """Pause, resume or stop what is playing on the TV called `name`."""
@@ -141,13 +178,18 @@ class TvService:
         chosen = _choose(title, found)
         if not isinstance(chosen, str):
             return chosen
-        session = await self._session(tv)
+        session = await self._session(tv) or await self._open_jellyfin(tv)
         if session is None:
-            return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
+            return _refused(
+                f"Jellyfin is not open on {tv.spoken}, and I could not open it. Open it there first."
+            )
         item = next(i for i in found if i.id == chosen)
         await self.library.play(session.id, item.id)
         return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}."}
 
+
+#: How long play waits, in seconds, for Jellyfin it opened to connect.
+OPEN_WAIT = 15.0
 
 NO_LIBRARY = "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key."
 

@@ -92,3 +92,17 @@ async def _check_optional(driver: Driver, problems: list[str], silent: str | Non
             )
             if closed is not False:
                 problems.append("close_app() on a silent address must give False")
+    await _check_open_app(extra, problems, silent)
+
+
+async def _check_open_app(extra: Any, problems: list[str], silent: str | None) -> None:  # noqa: ANN401
+    """open_app(), when the driver has it."""
+    if callable(getattr(extra, "open_app", None)) and silent is not None:
+        apps = getattr(extra, "apps", None) or {}
+        if apps:
+            app_id = next(iter(apps.values()))
+            opened = await _never_raises(
+                problems, "open_app() on a silent address", extra.open_app(silent, app_id)
+            )
+            if opened is not False:
+                problems.append("open_app() on a silent address must give False")

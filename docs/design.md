@@ -60,11 +60,11 @@ and `garage_confirm`.
 | `tv_power_request` | `tv_power_request(state, tv)`: a question to read aloud ("Switch the living room off?") and a one-time token; switches nothing | *asks* |
 | `tv_power_confirm` | `tv_power_confirm(token)`: switches, after the owner's yes. On: the power key when the TV still listens (standby or Art Mode), otherwise Wake-on-LAN. Off: on the Frame, the power key held for three seconds, since a short press only goes to Art Mode | the token works once, expires after 30 s, and only the latest question's counts; refused when the TV changed since the question |
 | `tv_confirm` | carries out the one action the token names | the token is used once and expires after a minute |
-| `tv_open_app` | opens an app from a short list in the settings (Jellyfin, YouTube, NRK TV) | only apps on the list |
+| `tv_open_app` | `tv_open_app(app, tv)`: opens an app the driver knows by name (on Samsung: Jellyfin, Netflix, YouTube; NRK TV once its id is read from a real set). Part of the opt-in `apps` feature, with `tv_close_app` | only apps the driver knows; never on a hands-off TV; never switches a TV on |
 | `tv_key` | one remote key: play, pause, back, home, arrows, OK | no power key; that goes through `tv_power_*` |
 | `tv_volume` | up, down or mute | at most five steps per call |
 | `tv_search` | finds a film or episode in Jellyfin by name | read-only |
-| `tv_play` | `tv_play(title, tv)`: finds the title, switches the TV on if it is off, opens Jellyfin, waits for its session, and starts the item | no extra question: naming a film and a TV is the request (see Safety 1); it refuses when the title matches more than one item and says which ones |
+| `tv_play` | `tv_play(title, tv)`: finds the title, opens Jellyfin when it is not open, waits up to 15 s for its session, and starts the item (switching the TV on first is still to come) | no extra question: naming a film and a TV is the request (see Safety 1); it refuses when the title matches more than one item and says which ones |
 | `tv_control` | pause, resume, stop, or jump back or forward on the TV's session | |
 
 Two more tools find the TVs and get each one ready:

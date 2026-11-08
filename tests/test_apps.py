@@ -19,7 +19,7 @@ UPSTAIRS = Tv(key="upstairs", names=("upstairs",), address="192.0.2.11", hands_o
 class FakeDriver:
     key = "samsung-tizen"
     ssdp_target = "x"
-    apps = types.MappingProxyType({"jellyfin": "AprZAARz4r.Jellyfin"})
+    apps = types.MappingProxyType({"jellyfin": "AprZAARz4r.Jellyfin", "youtube": "111299001912"})
 
     def __init__(self):
         self.closed = []
@@ -105,3 +105,58 @@ def test_the_apps_feature_is_off_by_default_and_adds_tv_close_app():
     names = lambda server: {t.name for t in asyncio.run(server.list_tools())}  # noqa: E731
     assert "tv_close_app" not in names(build_server(simulated_service()))
     assert "tv_close_app" in names(build_server(simulated_service(), features=["status", "media", "apps"]))
+
+
+class OpeningDriver(FakeDriver):
+    def __init__(self):
+        super().__init__()
+        self.opened = []
+
+    async def open_app(self, address, app_id):
+        self.opened.append((address, app_id))
+        return True
+
+
+def test_opening_an_app_on_the_named_tv():
+    driver = OpeningDriver()
+    answer = asyncio.run(_service(driver).open_app("YouTube", "The Frame"))
+    assert answer["outcome"] == "done", answer
+    assert driver.opened == [("192.0.2.10", "111299001912")]
+
+
+def test_a_hands_off_tv_never_has_an_app_opened_or_closed():
+    driver = OpeningDriver()
+    answer = asyncio.run(_service(driver, LIVING, UPSTAIRS).open_app("Jellyfin", "upstairs"))
+    assert answer["outcome"] == "refused"
+    assert driver.opened == []
+    closed = asyncio.run(_service(driver, LIVING, UPSTAIRS).close_app("Jellyfin", "upstairs"))
+    assert "left alone" in closed["say"]
+    assert driver.closed == []
+
+
+def test_an_app_that_cannot_be_opened_is_refused_naming_the_ones_that_can():
+    driver = OpeningDriver()
+    answer = asyncio.run(_service(driver).open_app("Minesweeper", "The Frame"))
+    assert answer["outcome"] == "refused"
+    assert "Youtube" in answer["say"] or "YouTube" in answer["say"]
+    assert driver.opened == []
+
+
+def test_the_samsung_driver_opens_an_app_through_the_tvs_own_api():
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, str(request.url)))
+        return httpx.Response(200, json=True)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await SamsungTizen(client, tls_client=client).open_app("192.0.2.10", "111299001912")
+
+    assert asyncio.run(run()) is True
+    assert seen == [("POST", "https://192.0.2.10:8002/api/v2/applications/111299001912")]
+
+
+def test_the_apps_feature_adds_tv_open_app():
+    names = {t.name for t in asyncio.run(build_server(simulated_service(), features=["apps"]).list_tools())}
+    assert names == {"tv_open_app", "tv_close_app"}

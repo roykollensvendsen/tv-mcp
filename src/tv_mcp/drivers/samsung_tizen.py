@@ -129,6 +129,14 @@ class SamsungTizen:
         page = await fetch_info(address, self._client)
         return parse_info(page) if page is not None else None
 
+    async def open_app(self, address: str, app_id: str) -> bool:
+        """Open `app_id` on the TV; no pairing is needed for this."""
+        try:
+            response = await self._tls.post(f"https://{address}:8002/api/v2/applications/{app_id}", timeout=5)
+        except httpx.HTTPError:
+            return False
+        return response.is_success
+
     async def close_app(self, address: str, app_id: str) -> bool:
         """Close `app_id` on the TV; no pairing is needed for this.
 

@@ -98,3 +98,9 @@ name = "a switch is refused when the TV changed since the question"
 file = "src/tv_mcp/power.py"
 find = '        if await self\._state\(pending\.tv\) == wanted:'
 replace = 'if False:'
+
+[[rule]]
+name = "a hands-off TV never has an app opened or closed"
+file = "src/tv_mcp/service.py"
+find = '        if tv\.hands_off or not tv\.address:'
+replace = 'if False:'
