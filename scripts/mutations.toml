@@ -50,3 +50,9 @@ name = "only a switched-on feature adds tools"
 file = "src/tv_mcp/server.py"
 find = 'for feature in wanted:'
 replace = 'for feature in FEATURES:'
+
+[[rule]]
+name = "a title that matches several items is refused, naming them"
+file = "src/tv_mcp/service.py"
+find = 'return _refused\(f"\{title!r\} could be: \{options\}\. Which one\?"\)'
+replace = 'return found[0].id'

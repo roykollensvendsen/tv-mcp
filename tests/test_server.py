@@ -19,7 +19,8 @@ def _call(server, tool, arguments=None):
 
 
 def test_only_a_switched_on_feature_adds_tools():
-    assert sorted(_tools(build_server(simulated_service(), simulated=True))) == ["tv_status"]
+    default = sorted(_tools(build_server(simulated_service(), simulated=True)))
+    assert default == ["media_play", "media_search", "tv_status"]
     both = build_server(simulated_service(), features=["status", "setup"], simulated=True)
     assert sorted(_tools(both)) == ["tv_discover", "tv_status"]
     assert _tools(build_server(simulated_service(), features=[], simulated=True)) == {}
@@ -51,3 +52,12 @@ def test_tv_discover_reports_the_frame_with_its_year_and_platform():
 
 def test_the_simulated_server_says_it_is_simulated():
     assert build_server(simulated_service(), simulated=True).instructions.startswith("SIMULATED")
+
+
+def test_media_play_starts_a_new_hope_on_the_frame():
+    service = simulated_service()
+    answer = _call(
+        build_server(service, simulated=True), "media_play", {"title": "A New Hope", "tv": "The Frame"}
+    )
+    assert answer["outcome"] == "playing"
+    assert service.library.played == [("sim-session", "sim-4")]

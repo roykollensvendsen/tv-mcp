@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from tv_mcp.driver import Driver, TvInfo
+    from tv_mcp.media import MediaItem, MediaLibrary
 
 LEFT_ALONE = "left alone"
 
@@ -28,9 +29,16 @@ class Listen(Protocol):
 class TvService:
     """Status and discovery for the TVs in the settings."""
 
-    def __init__(self, settings: Settings, *, drivers: Mapping[str, Driver], listen: Listen) -> None:
-        """Reach each TV through `drivers`, by key, and find TVs with `listen`."""
-        self.settings, self.drivers, self._listen = settings, drivers, listen
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        drivers: Mapping[str, Driver],
+        listen: Listen,
+        library: MediaLibrary | None = None,
+    ) -> None:
+        """Reach each TV through `drivers`, by key, find TVs with `listen`, and films in `library`."""
+        self.settings, self.drivers, self._listen, self.library = settings, drivers, listen, library
 
     async def _read(self, tv: Tv) -> dict[str, Any]:
         # RULE: a hands-off TV is never contacted
@@ -62,6 +70,61 @@ class TvService:
                     known.add(address)
                     reports.append(_report(None, await driver.read_info(address)))
         return {"searched": full, "tvs": reports}
+
+    async def search(self, term: str) -> dict[str, Any]:
+        """Films and episodes matching `term`."""
+        if self.library is None:
+            return {"items": [], "say": NO_LIBRARY}
+        found = await self.library.search(term)
+        return {"items": [{"title": i.title, "year": i.year, "kind": i.kind} for i in found]}
+
+    async def play(self, title: str, name: str) -> dict[str, Any]:
+        """Start `title` on the TV called `name`, through Jellyfin on that TV."""
+        try:
+            tv = find_tv(self.settings, name)
+        except (UnknownTvError, AmbiguousTvError) as refusal:
+            return _refused(str(refusal))
+        if tv.hands_off:
+            return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
+        if self.library is None:
+            return _refused(NO_LIBRARY)
+        found = await self.library.search(title)
+        chosen = _choose(title, found)
+        if not isinstance(chosen, str):
+            return chosen
+        session = next(
+            (s for s in await self.library.sessions() if s.address == tv.address and s.controllable), None
+        )
+        if session is None:
+            return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
+        item = next(i for i in found if i.id == chosen)
+        await self.library.play(session.id, item.id)
+        return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}."}
+
+
+NO_LIBRARY = "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key."
+
+
+def _refused(say: str) -> dict[str, Any]:
+    return {"outcome": "refused", "say": say}
+
+
+def _spoken(item: MediaItem) -> str:
+    return f"{item.title} ({item.year})" if item.year else item.title
+
+
+def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
+    """The id of the one item meant, or a refusal that says what there is."""
+    if not found:
+        return _refused(f"Found nothing called {title!r}.")
+    exact = [i for i in found if i.title.casefold() == title.casefold()]
+    if len(exact) == 1:
+        return exact[0].id
+    if len(found) == 1:
+        return found[0].id
+    options = "; ".join(_spoken(i) for i in found[:3])
+    # RULE: a title that matches several items is refused, naming them
+    return _refused(f"{title!r} could be: {options}. Which one?")
 
 
 def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:

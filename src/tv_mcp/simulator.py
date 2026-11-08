@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from tv_mcp.driver import TvInfo
+from tv_mcp.media import MediaItem, Session
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
 
@@ -44,10 +45,46 @@ class SimulatedTv:
         return FRAME if address == FRAME_ADDRESS else None
 
 
+class SimulatedLibrary:
+    """A simulated Jellyfin with a few films, connected to the simulated Frame."""
+
+    items = (
+        MediaItem(id="sim-4", title="Star Wars: Episode IV - A New Hope", year=1977, kind="Movie"),
+        MediaItem(
+            id="sim-5", title="Star Wars: Episode V - The Empire Strikes Back", year=1980, kind="Movie"
+        ),
+        MediaItem(id="sim-r1", title="Rogue One: A Star Wars Story", year=2016, kind="Movie"),
+    )
+
+    def __init__(self) -> None:
+        """Nothing played yet."""
+        self.played: list[tuple[str, str]] = []
+
+    async def search(self, term: str) -> list[MediaItem]:
+        """Items whose title holds every word of `term`."""
+        words = term.casefold().split()
+        return [i for i in self.items if all(w in i.title.casefold() for w in words)]
+
+    async def sessions(self) -> list[Session]:
+        """Jellyfin open on the simulated Frame."""
+        return [
+            Session(id="sim-session", address=FRAME_ADDRESS, client="Jellyfin for Tizen", controllable=True)
+        ]
+
+    async def play(self, session_id: str, item_id: str) -> None:
+        """Remember what was played."""
+        self.played.append((session_id, item_id))
+
+
 async def _listen(recognises: Callable[[bytes], bool], target: str | None) -> list[str]:  # noqa: ARG001
     return [FRAME_ADDRESS]
 
 
 def simulated_service() -> TvService:
     """The service wired to the simulated Frame."""
-    return TvService(Settings(tvs=SIMULATED_TVS), drivers={"samsung-tizen": SimulatedTv()}, listen=_listen)
+    return TvService(
+        Settings(tvs=SIMULATED_TVS),
+        drivers={"samsung-tizen": SimulatedTv()},
+        listen=_listen,
+        library=SimulatedLibrary(),
+    )

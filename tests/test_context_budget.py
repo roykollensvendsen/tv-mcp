@@ -14,8 +14,8 @@ from tv_mcp.server import build_server
 from tv_mcp.simulator import simulated_service
 
 #: The default set's limits. Raise one only on purpose.
-MAX_TOOLS = 1
-MAX_CHARACTERS = 400
+MAX_TOOLS = 3
+MAX_CHARACTERS = 800
 
 
 def _cost(server):
@@ -34,6 +34,6 @@ def test_the_default_set_stays_within_its_tool_and_character_budget():
 
 def test_a_feature_left_off_costs_nothing():
     _, default = _cost(build_server(simulated_service()))
-    _, with_setup = _cost(build_server(simulated_service(), features=["status", "setup"]))
+    _, with_setup = _cost(build_server(simulated_service(), features=["status", "media", "setup"]))
     _, nothing = _cost(build_server(simulated_service(), features=[]))
     assert with_setup > default > nothing

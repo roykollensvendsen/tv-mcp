@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from tv_mcp.tools import setup, status
+from tv_mcp.tools import media, setup, status
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,6 +22,6 @@ if TYPE_CHECKING:
     Register = Callable[[MCPServer[Any], TvService, bool], None]
 
 #: Every feature, by the name the settings file uses.
-FEATURES: dict[str, Register] = {"status": status.register, "setup": setup.register}
+FEATURES: dict[str, Register] = {"status": status.register, "media": media.register, "setup": setup.register}
 #: What a settings file with no [features] table gets: the everyday tools only.
-DEFAULT_FEATURES: tuple[str, ...] = ("status",)
+DEFAULT_FEATURES: tuple[str, ...] = ("status", "media")

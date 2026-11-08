@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from tv_mcp import discovery
+from tv_mcp.drivers.jellyfin import Jellyfin
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
 from tv_mcp.service import TvService
 from tv_mcp.settings import load_settings, settings_path
@@ -28,8 +29,14 @@ def _with_service(*, simulate: bool, work: Callable[[TvService], Awaitable[Any]]
         if simulate:
             return await work(simulated_service())
         async with httpx.AsyncClient() as client:  # pragma: no cover - needs a real TV
+            settings = load_settings(settings_path())
             drivers = {driver.key: driver for driver in (SamsungTizen(client),)}
-            service = TvService(load_settings(settings_path()), drivers=drivers, listen=discovery.listen)
+            library = (
+                Jellyfin(settings.jellyfin_url, settings.jellyfin_key, client)
+                if settings.jellyfin_url and settings.jellyfin_key
+                else None
+            )
+            service = TvService(settings, drivers=drivers, listen=discovery.listen, library=library)
             return await work(service)
 
     return asyncio.run(run())

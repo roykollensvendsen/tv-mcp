@@ -202,7 +202,7 @@ Without that list, the owner gets the small default set: `status` today, then
 `media` (search and play) once it exists. `setup`, `power` and anything extra
 are opt-in. Tool descriptions are kept to one line.
 `tests/test_context_budget.py` holds the default set to a fixed number of
-tools and characters (1 tool and 400 characters today). A change that raises
+tools and characters (3 tools and 800 characters today: status, search and play). A change that raises
 either does it on purpose, in its own pull request.
 
 The repository stays private until the owner decides otherwise. It is written
