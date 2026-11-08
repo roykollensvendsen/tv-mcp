@@ -171,6 +171,44 @@ with why it is needed, and `tv_setup` asks the owner before installing it.
 6. A simulated mode (`tv-mcp serve --simulate`) answers the same tools from a
    fake TV and a fake Jellyfin, for the tests and for the first try by voice.
 
+## Layers, drivers and features
+
+The project is meant to take support for other people's TVs, so it is built
+in layers, and `tests/test_layers.py` refuses an import that crosses them:
+
+| Layer | Holds | May use |
+|---|---|---|
+| core | settings, the driver interface (`driver.py`), what the tools do (`service.py`), discovery, the simulated TV | nothing above it; never MCP, never a driver |
+| drivers | one module per brand or platform: `samsung_tizen` first; LG webOS, Google TV and Roku later | the core |
+| tools | MCP tools, grouped into features | the core and MCP; never a driver |
+| top | the server and the command line, which put them together | everything |
+
+**A driver** implements `tv_mcp.driver.Driver`: a key for the settings file,
+the SSDP service its TVs answer to, whether an announcement is one of its TVs,
+and reading a TV's description of itself. Each later slice adds a method with
+its own safety rule. A contributor's driver comes with:
+
+- a model data file per model family for `tv_setup`;
+- a run of the conformance kit (`tests/conformance/`, to come): the same tests
+  every driver must pass, against the contributor's driver and against the
+  simulated TV in `simulator.py`, so most of it needs no hardware;
+- the "add a new TV" template in `CONTRIBUTING.md` (to come), which the
+  development skill follows for a contributor's own agent.
+
+**Features** decide which tools the voice model sees. Only switched-on
+features add tools, so an unused feature or brand costs no tools and no
+description text. The settings file lists them under `[features] enabled`.
+Without that list, the owner gets the small default set: `status` today, then
+`media` (search and play) once it exists. `setup`, `power` and anything extra
+are opt-in. Tool descriptions are kept to one line.
+`tests/test_context_budget.py` holds the default set to a fixed number of
+tools and characters (1 tool and 400 characters today). A change that raises
+either does it on purpose, in its own pull request.
+
+The repository stays private until the owner decides otherwise. It is written
+to be ready for that: GPL-3.0-or-later, and nothing about the owner's home in
+it.
+
 ## How it plugs into claude-voice
 
 As the `write-plugin` skill in claude-voice describes:
