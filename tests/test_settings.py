@@ -3,6 +3,7 @@
 
 import pytest
 
+from tv_mcp.cli import main
 from tv_mcp.settings import AmbiguousTvError, UnknownTvError, find_tv, load_settings
 
 EXAMPLE = """
@@ -98,3 +99,10 @@ def test_a_key_in_the_settings_file_wins_over_the_key_file(tmp_path):
     path.write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\napi_key = "inline"\n')
     (tmp_path / "jellyfin-key").write_text("from-the-file")
     assert load_settings(path).jellyfin_key == "inline"
+
+
+def test_the_command_line_can_point_at_a_settings_file(tmp_path, capsys):
+    path = tmp_path / "config.toml"
+    path.write_text('[tvs.den]\nnames = ["the den"]\nhands_off = true\n')
+    assert main(["status", "--settings", str(path)]) == 0
+    assert capsys.readouterr().out == "the den: left alone\n"

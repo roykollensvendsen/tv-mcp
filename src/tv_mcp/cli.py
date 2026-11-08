@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import pathlib
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -24,12 +25,16 @@ if TYPE_CHECKING:
 COMMANDS: tuple[str, ...] = ("serve", "status")
 
 
-def _with_service(*, simulate: bool, work: Callable[[TvService], Awaitable[Any]]) -> Any:  # noqa: ANN401 - whatever the work returns
+def _with_service(
+    *, simulate: bool, settings_file: str | None, work: Callable[[TvService], Awaitable[Any]]
+) -> Any:  # noqa: ANN401 - whatever the work returns
+    path = pathlib.Path(settings_file).expanduser() if settings_file else settings_path()
+    settings = load_settings(path)
+
     async def run() -> Any:  # noqa: ANN401
         if simulate:
             return await work(simulated_service())
-        async with httpx.AsyncClient() as client:  # pragma: no cover - needs a real TV
-            settings = load_settings(settings_path())
+        async with httpx.AsyncClient() as client:
             drivers = {driver.key: driver for driver in (SamsungTizen(client),)}
             library = (
                 Jellyfin(settings.jellyfin_url, settings.jellyfin_key, client)
@@ -55,9 +60,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tv-mcp", description=__doc__)
     parser.add_argument("command", choices=COMMANDS)
     parser.add_argument("--simulate", action="store_true", help="use a simulated Frame, not the real TVs")
+    parser.add_argument("--settings", help="the settings file (default ~/.config/tv-mcp/config.toml)")
     args = parser.parse_args(argv)
     if args.command == "status":
-        reports = _with_service(simulate=args.simulate, work=lambda s: s.status(None))
+        reports = _with_service(
+            simulate=args.simulate, settings_file=args.settings, work=lambda s: s.status(None)
+        )
         sys.stdout.write("".join(_line(r) + "\n" for r in reports))
         return 0
     from tv_mcp.server import build_server  # noqa: PLC0415 - only serving needs the MCP server
@@ -69,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         await server.run_stdio_async()
 
-    _with_service(simulate=args.simulate, work=serve)  # pragma: no cover
+    _with_service(simulate=args.simulate, settings_file=args.settings, work=serve)  # pragma: no cover
     return 0  # pragma: no cover
 
 
