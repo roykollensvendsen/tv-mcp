@@ -21,9 +21,15 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
         else:
             name = report["tv"] or (f"a {report['model']}" if report.get("model") else "an unknown TV")
             lines.append(
-                f"{_capital(name)} is {report['state']}{_playing(report.get('playing'))}{_sound(report)}."
+                f"{_capital(name)} is {report['state']}{_screen(report)}{_playing(report.get('playing'))}"
+                f"{_sound(report)}."
             )
     return " ".join(lines)
+
+
+def _screen(report: dict[str, Any]) -> str:
+    """Whether the TV itself is on, when status reads a device that plays to it."""
+    return f", the TV itself is {report['screen']}" if report.get("screen") else ""
 
 
 def _sound(report: dict[str, Any]) -> str:

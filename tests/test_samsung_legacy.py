@@ -154,3 +154,14 @@ def test_switching_on_counts_as_sent_when_the_wake_packet_went_though_the_remote
     assert asyncio.run(legacy.switch(tv, on=True)) is True
     assert woken == [("00:00:5e:00:53:01", "192.0.2.21")]
     assert asyncio.run(legacy.switch(tv, on=False)) is False
+
+
+def test_status_says_whether_the_tv_itself_is_on_beside_the_device_that_casts_to_it():
+    # 2026-11-09: status for the garage named only the Chromecast, never the Samsung itself.
+    from tv_mcp.tools.say import tv_lines  # noqa: PLC0415
+
+    for power, said in (("on", "the TV itself is on"), ("standby", "the TV itself is off"), (None, "off")):
+        service = _power(Legacy(power))._service  # noqa: SLF001 - the service under the power checks
+        [report] = asyncio.run(service.status("garage"))
+        assert report["screen"] == ("on" if power == "on" else "off")
+        assert said in tv_lines([report])

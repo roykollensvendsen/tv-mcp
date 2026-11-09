@@ -211,7 +211,19 @@ class TvService:
             if not tv.hands_off:
                 await self._add_playing(tv, report, sessions)
                 await self._add_sound(tv, report)
+            await self._add_screen(tv, report)
         return reports
+
+    async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
+        """Add whether the TV itself is on, when another device (a Chromecast) plays to it.
+
+        Only silent reads: which of the TV's own ports answer.
+        """
+        driver = self.drivers.get(tv.power_driver) if tv.power_driver else None
+        if driver is None or not tv.power_address:
+            return
+        info = await driver.read_info(tv.power_address)
+        report["screen"] = "on" if info is not None and info.power == "on" else "off"
 
     async def discover(self, *, full: bool) -> dict[str, Any]:
         """The TVs in the settings, and any others that announced themselves."""
