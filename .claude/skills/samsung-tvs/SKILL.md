@@ -72,6 +72,16 @@ Each family's sub-skill says how a step differs on that family.
    *Power On with Mobile* and *IP Remote*. Over wireless it is unreliable from
    deep standby; plan to fall back to the power key when the TV is in Art Mode.
 
+## Before Tizen (2011-2015)
+
+The garage's 2012 UE40ES6715 has none of the Tizen ports (8001, 8002, 9197),
+so samsungtvws cannot reach it; `drivers/samsung_legacy.py` speaks its older
+remote protocol on port 55000, which shows an "allow" question on the TV the
+first time. Seen 2026-11-09: in standby only 55000 answers; while on, 55000,
+7676 (its media renderer) and 6000 answer, and 52235 does not. Switching it
+on from standby by voice failed the first time; whether a 2012 set can be
+woken over Wi-Fi at all is not known.
+
 ## Adding a family
 
 Copy the 2022 sub-skill's shape into `samsung-tvs-<year>-<family>/`, write

@@ -116,13 +116,13 @@ def test_a_power_target_that_does_not_answer_counts_as_off():
     assert legacy.read == "192.0.2.21"
 
 
-def test_an_old_samsung_is_on_when_its_media_service_answers_and_in_standby_when_only_the_remote_does():
+def test_an_old_samsung_is_on_when_its_media_renderer_answers_and_in_standby_when_only_the_remote_does():
     async def run(open_ports):
         async def reach(address, port):
             return port in open_ports
 
         return await SamsungLegacy(reach=reach).read_info("192.0.2.21")
 
-    assert asyncio.run(run({55000, 52235})).power == "on"
+    assert asyncio.run(run({55000, 7676})).power == "on"
     assert asyncio.run(run({55000})).power == "standby"
     assert asyncio.run(run(set())) is None

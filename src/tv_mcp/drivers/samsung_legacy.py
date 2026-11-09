@@ -5,7 +5,7 @@ These TVs take remote keys over a plain TCP connection on port 55000. The
 first time a remote connects, the TV shows an "allow" question that the owner
 answers with its own remote; after that it is let in. Nothing needs pairing
 files. Whether the TV is on is read from which of its ports answer: its media
-service (port 52235) only while it is on, its remote port in standby too. The
+renderer (port 7676) only while it is on, its remote port in standby too. The
 protocol is the one samsungctl documents.
 """
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from tv_mcp.settings import Tv
 
-REMOTE_PORT, MEDIA_PORT = 55000, 52235
+REMOTE_PORT, MEDIA_PORT = 55000, 7676
 #: The name the TV shows in its "allow" question, and remembers.
 NAME = "tv-mcp"
 #: How long the owner gets to answer the TV's "allow" question.
