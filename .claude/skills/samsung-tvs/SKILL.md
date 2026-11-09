@@ -78,9 +78,12 @@ The garage's 2012 UE40ES6715 has none of the Tizen ports (8001, 8002, 9197),
 so samsungtvws cannot reach it; `drivers/samsung_legacy.py` speaks its older
 remote protocol on port 55000, which shows an "allow" question on the TV the
 first time. Seen 2026-11-09: in standby only 55000 answers; while on, 55000,
-7676 (its media renderer) and 6000 answer, and 52235 does not. Switching it
-on from standby by voice failed the first time; whether a 2012 set can be
-woken over Wi-Fi at all is not known.
+7676 (its media renderer) and 6000 answer, and 52235 does not. After the owner
+pressed "allow", switching it off by voice worked (2026-11-09). Switching it
+on from standby failed: the wake packet had gone to 255.255.255.255, which a
+machine on two networks sends out of only one, so it never reached the TV's
+network. It now goes to the TV's own network as well. Whether a 2012 set
+wakes over Wi-Fi at all is still not known.
 
 ## Adding a family
 

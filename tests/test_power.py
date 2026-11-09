@@ -18,8 +18,8 @@ class PowerDriver:
     key = "samsung-tizen"
     ssdp_target = "x"
 
-    def __init__(self, power="on"):
-        self.power, self.switched = power, []
+    def __init__(self, power="on", *, obeys=True):
+        self.power, self.switched, self.obeys = power, [], obeys
 
     def recognises(self, announcement):
         return False
@@ -33,6 +33,8 @@ class PowerDriver:
 
     async def switch(self, tv, *, on):
         self.switched.append((tv.key, on))
+        if self.obeys:
+            self.power = "on" if on else "off"
         return True
 
 
@@ -51,7 +53,11 @@ class Clock:
 def _power(driver, *tvs, clock=None):
     service = TvService(Settings(tvs=tvs or (LIVING,)), drivers={driver.key: driver}, listen=_no_listen)
     tokens = iter(f"token-{n}" for n in range(100))
-    return PowerService(service, clock=clock or Clock(), new_token=lambda: next(tokens))
+    return PowerService(service, clock=clock or Clock(), new_token=lambda: next(tokens), sleep=_no_wait)
+
+
+async def _no_wait(seconds):
+    return None
 
 
 def _run(coroutine):
@@ -155,3 +161,23 @@ def test_a_switch_is_refused_when_the_tv_state_is_not_known():
     answer = _run(_power(driver).request("off", "The Frame"))
     assert answer["outcome"] == "refused"
     assert "token" not in answer
+
+
+def test_a_switch_is_done_only_once_the_tv_is_seen_in_its_new_state():
+    driver = PowerDriver("on")
+    power = _power(driver)
+    _run(power.request("off", "The Frame"))
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "done"
+    assert "off now" in answer["say"]
+
+
+def test_a_tv_that_does_not_change_after_the_key_is_not_called_switched():
+    # 2026-11-09: the garage TV let tv-mcp in and stayed on, and the voice said it was switching off.
+    driver = PowerDriver("on", obeys=False)
+    power = _power(driver)
+    _run(power.request("off", "The Frame"))
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "unverified"
+    assert "still" in answer["say"]
+    assert driver.switched == [("living-room", False)]

@@ -7,6 +7,7 @@ real network, and it never touches the network.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, ClassVar
 
 from tv_mcp.driver import TvInfo
@@ -37,10 +38,15 @@ class SimulatedTv:
     ssdp_target = "urn:example:simulated-tv"
 
     apps: ClassVar[dict[str, str]] = {"jellyfin": "sim.Jellyfin"}
+    #: What the simulated Frame says its power is; switching changes it.
+    power = "on"
 
-    async def switch(self, tv: Tv, *, on: bool) -> bool:  # noqa: ARG002 - nothing to switch
+    async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Pretend to switch the TV, when it has an address to reach."""
-        return tv.address is not None
+        if tv.address is None:
+            return False
+        self.power = "on" if on else "standby"
+        return True
 
     async def open_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to open
         """Pretend to open the app."""
@@ -56,7 +62,7 @@ class SimulatedTv:
 
     async def read_info(self, address: str) -> TvInfo | None:
         """The simulated Frame, at its one address."""
-        return FRAME if address == FRAME_ADDRESS else None
+        return replace(FRAME, power=self.power) if address == FRAME_ADDRESS else None
 
 
 class SimulatedLibrary:

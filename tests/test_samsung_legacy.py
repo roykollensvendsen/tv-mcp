@@ -76,6 +76,7 @@ class Legacy:
 
     async def switch(self, tv, *, on):
         self.switched.append((tv.address, on))
+        self.power = "on" if on else "standby"
         return True
 
 
@@ -97,7 +98,11 @@ def _power(legacy):
     service = TvService(
         Settings(tvs=(GARAGE,)), drivers={"chromecast": Cast(), legacy.key: legacy}, listen=no_listen
     )
-    return PowerService(service, new_token=lambda: "t1")
+
+    async def no_wait(seconds):
+        return None
+
+    return PowerService(service, new_token=lambda: "t1", sleep=no_wait)
 
 
 def test_a_tv_with_a_power_target_is_switched_through_it_after_a_yes():
@@ -126,3 +131,26 @@ def test_an_old_samsung_is_on_when_its_media_renderer_answers_and_in_standby_whe
     assert asyncio.run(run({55000, 7676})).power == "on"
     assert asyncio.run(run({55000})).power == "standby"
     assert asyncio.run(run(set())) is None
+
+
+def test_a_wake_packet_goes_to_the_tvs_own_network_and_not_only_the_default_one():
+    # 2026-11-09: this machine is on two networks, and 255.255.255.255 left on the other one.
+    from tv_mcp.drivers.samsung_legacy import broadcasts  # noqa: PLC0415
+
+    assert broadcasts("192.0.2.21") == ["192.0.2.255", "255.255.255.255"]
+
+
+def test_switching_on_counts_as_sent_when_the_wake_packet_went_though_the_remote_port_is_silent():
+    from tv_mcp.drivers.samsung_legacy import SamsungLegacy  # noqa: PLC0415
+    from tv_mcp.settings import Tv  # noqa: PLC0415
+
+    woken = []
+
+    async def silent(address, key):
+        return False
+
+    legacy = SamsungLegacy(wake=lambda mac, address: woken.append((mac, address)), press=silent)
+    tv = Tv(key="garage", names=("garage",), address="192.0.2.21", mac="00:00:5e:00:53:01")
+    assert asyncio.run(legacy.switch(tv, on=True)) is True
+    assert woken == [("00:00:5e:00:53:01", "192.0.2.21")]
+    assert asyncio.run(legacy.switch(tv, on=False)) is False

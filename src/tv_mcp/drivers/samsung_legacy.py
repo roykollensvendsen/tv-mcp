@@ -62,12 +62,23 @@ def answer_of(payload: bytes) -> str:
     return "unknown"
 
 
-def _send_wake(mac: str) -> None:  # pragma: no cover - sends to the network
+def broadcasts(address: str) -> list[str]:
+    """Where a wake packet for the TV at `address` goes: its own network first, then the default one.
+
+    A machine on two networks sends 255.255.255.255 out of only one of them.
+    The TV's network is taken to be a /24, as home networks are.
+    """
+    return [address.rsplit(".", 1)[0] + ".255", "255.255.255.255"]
+
+
+def _send_wake(mac: str, address: str) -> None:  # pragma: no cover - sends to the network
     """A Wake-on-LAN packet: six 0xFF bytes, then the MAC sixteen times."""
     packet = b"\xff" * 6 + bytes.fromhex(mac.replace(":", "").replace("-", "")) * 16
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(packet, ("255.255.255.255", 9))
+        for target in broadcasts(address):
+            with contextlib.suppress(OSError):
+                sock.sendto(packet, (target, 9))
 
 
 async def _reach(address: str, port: int) -> bool:  # pragma: no cover - the network
@@ -91,10 +102,12 @@ class SamsungLegacy:
         self,
         *,
         reach: Callable[[str, int], Awaitable[bool]] = _reach,
-        wake: Callable[[str], None] | None = None,
+        wake: Callable[[str, str], None] | None = None,
+        press: Callable[[str, str], Awaitable[bool]] | None = None,
     ) -> None:
-        """Check ports with `reach`; send wake packets with `wake`."""
+        """Check ports with `reach`, send wake packets with `wake`, and press keys with `press`."""
         self._reach, self._wake = reach, wake or _send_wake
+        self._press = press or _press
 
     def recognises(self, announcement: bytes) -> bool:
         """Whether an announcement comes from an older Samsung."""
@@ -114,30 +127,36 @@ class SamsungLegacy:
         """Off with the power key; on with a wake packet and the power key, which some take in standby."""
         if tv.address is None:
             return False
+        woken = False
         if on and tv.mac:
-            self._wake(tv.mac)
-        return await self._press(tv.address, "KEY_POWERON" if on else "KEY_POWEROFF")
+            self._wake(tv.mac, tv.address)
+            woken = True
+        pressed = await self._press(tv.address, "KEY_POWERON" if on else "KEY_POWEROFF")
+        # In deep standby the remote port may not answer; the wake packet may still switch it on.
+        return pressed or woken
 
-    async def _press(self, address: str, key: str) -> bool:  # pragma: no cover - a real TV
-        try:
-            reader, writer = await asyncio.wait_for(asyncio.open_connection(address, REMOTE_PORT), 5.0)
-        except (OSError, TimeoutError):
+
+async def _press(address: str, key: str) -> bool:  # pragma: no cover - a real TV
+    """Press `key` on the TV's remote port, after it lets tv-mcp in."""
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, REMOTE_PORT), 5.0)
+    except (OSError, TimeoutError):
+        return False
+    try:
+        writer.write(auth_packet(NAME))
+        await writer.drain()
+        answer = "waiting"
+        while answer == "waiting":
+            header = await asyncio.wait_for(reader.readexactly(3), ANSWER_WAIT)
+            await reader.readexactly(int.from_bytes(header[1:3], "little"))
+            size = int.from_bytes(await reader.readexactly(2), "little")
+            answer = answer_of(await reader.readexactly(size))
+        if answer != "allowed":
             return False
-        try:
-            writer.write(auth_packet(NAME))
-            await writer.drain()
-            answer = "waiting"
-            while answer == "waiting":
-                header = await asyncio.wait_for(reader.readexactly(3), ANSWER_WAIT)
-                await reader.readexactly(int.from_bytes(header[1:3], "little"))
-                size = int.from_bytes(await reader.readexactly(2), "little")
-                answer = answer_of(await reader.readexactly(size))
-            if answer != "allowed":
-                return False
-            writer.write(key_packet(key))
-            await writer.drain()
-        except (OSError, TimeoutError, asyncio.IncompleteReadError):
-            return False
-        finally:
-            writer.close()
-        return True
+        writer.write(key_packet(key))
+        await writer.drain()
+    except (OSError, TimeoutError, asyncio.IncompleteReadError):
+        return False
+    finally:
+        writer.close()
+    return True

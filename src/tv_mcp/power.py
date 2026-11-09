@@ -9,6 +9,7 @@ voice's instructions, so no wording of a request can skip the question.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from dataclasses import dataclass, replace
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 from tv_mcp.settings import AmbiguousTvError, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from tv_mcp.driver import Switches
     from tv_mcp.service import TvService
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
 
 #: How long a question stays open, in seconds.
 EXPIRES = 30.0
+#: How many seconds to watch a TV for its new state after switching it.
+SETTLE = 25
 #: The words a request takes.
 STATES = ("on", "off")
 _OFF = {"standby", "standby or art mode", "off or not reachable"}
@@ -51,9 +54,10 @@ class PowerService:
         *,
         clock: Callable[[], float] = time.monotonic,
         new_token: Callable[[], str] = lambda: secrets.token_urlsafe(16),
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """Read and reach the TVs through `service`."""
-        self._service, self._clock, self._new_token = service, clock, new_token
+        self._service, self._clock, self._new_token, self._sleep = service, clock, new_token, sleep
         self._pending: _Pending | None = None
 
     async def _state(self, tv: Tv) -> str | None:
@@ -117,4 +121,11 @@ class PowerService:
         )
         if switcher is None or not await switcher.switch(target, on=pending.on):
             return _refused(f"{pending.tv.spoken.capitalize()} did not answer.")
-        return {"outcome": "done", "say": f"Switching {pending.tv.spoken} {wanted}."}
+        for _ in range(SETTLE):
+            if await self._state(pending.tv) == wanted:
+                return {"outcome": "done", "say": f"{pending.tv.spoken.capitalize()} is {wanted} now."}
+            await self._sleep(1.0)
+        return {
+            "outcome": "unverified",
+            "say": f"I sent it, but {pending.tv.spoken} still does not seem {wanted}.",
+        }
