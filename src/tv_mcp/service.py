@@ -114,7 +114,9 @@ class TvService:
         apps: Mapping[str, str] = (
             getattr(driver, "apps", {}) if callable(getattr(driver, method, None)) else {}
         )
-        app_id = apps.get(app.casefold())
+        # "NRK TV" is how the owner says the app called "nrk".
+        spoken = app.casefold().strip()
+        app_id = apps.get(spoken) or apps.get(spoken.removesuffix(" tv"))
         if app_id is None:
             known = ", ".join(a.capitalize() for a in apps) or "none"
             return _refused(

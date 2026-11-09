@@ -160,3 +160,17 @@ def test_the_samsung_driver_opens_an_app_through_the_tvs_own_api():
 def test_the_apps_feature_adds_tv_open_app():
     names = {t.name for t in asyncio.run(build_server(simulated_service(), features=["apps"]).list_tools())}
     assert names == {"tv_open_app", "tv_close_app"}
+
+
+def test_the_samsung_driver_knows_the_apps_the_family_uses():
+    # NRK TV's id was read from a 2022 Frame with `sdb shell 0 vd_applist` on 2026-11-09.
+    assert SamsungTizen.apps["nrk"] == "3202012022410"
+    assert {"netflix", "youtube", "jellyfin"} <= set(SamsungTizen.apps)
+
+
+def test_an_app_named_with_tv_after_it_is_found():
+    driver = OpeningDriver()
+    driver.apps = types.MappingProxyType({"nrk": "3202012022410"})
+    answer = asyncio.run(_service(driver).open_app("NRK TV", "The Frame"))
+    assert answer["outcome"] == "done", answer
+    assert driver.opened == [("192.0.2.10", "3202012022410")]

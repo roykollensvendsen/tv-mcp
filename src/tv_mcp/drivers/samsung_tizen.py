@@ -100,6 +100,7 @@ class SamsungTizen:
     apps: ClassVar[dict[str, str]] = {
         "jellyfin": "AprZAARz4r.Jellyfin",
         "netflix": "3201907018807",
+        "nrk": "3202012022410",
         "youtube": "111299001912",
     }
 

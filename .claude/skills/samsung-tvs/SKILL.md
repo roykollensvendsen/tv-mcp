@@ -33,6 +33,15 @@ holds what was tested on a real set, with the date:
    from elsewhere, and Claude Code's checks refuse to run it; give the owner
    the exact `!` command and read its output.
 
+6. **An app's id comes from the TV itself**, never from a guess or a list
+   online: ids differ by country and firmware. With developer mode on, run
+   `sdb connect <tv>:26101` and `sdb shell 0 vd_applist` (the owner runs it;
+   `sdb` is in the Jellyfin installer image) and take `app_id`. Check it
+   silently with `GET https://<tv>:8002/api/v2/applications/<id>`. The paired
+   remote's installed-apps request got no answer from a 2022 Frame, and DIAL
+   on port 8080 can see and close an app by name but would not start one
+   (2026-11-09).
+
 ## The setup steps, in order
 
 Each family's sub-skill says how a step differs on that family.
