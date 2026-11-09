@@ -121,6 +121,10 @@ class HasSound(Protocol):
         """The volume now, or None when the TV does not say."""
         ...
 
+    async def muted(self, address: str) -> bool | None:
+        """Whether the sound is off, or None when the TV does not say."""
+        ...
+
     async def set_volume(self, address: str, level: int) -> bool:
         """Set the volume; False when the TV did not take it."""
         ...

@@ -163,6 +163,10 @@ class Chromecast:
         """The Chromecast's own volume, 0 to 100."""
         return await asyncio.to_thread(_sound_blocking, address, None, None)
 
+    async def muted(self, address: str) -> bool | None:
+        """Whether the Chromecast's sound is off."""
+        return await asyncio.to_thread(_muted_blocking, address)
+
     async def set_volume(self, address: str, level: int) -> bool:
         """Set the Chromecast's own volume; the TV's volume stays as it is."""
         return await asyncio.to_thread(_sound_blocking, address, level, None) is not None
@@ -419,3 +423,13 @@ def _media_blocking(
     except Exception:  # noqa: BLE001 - any failure of the device means no answer
         return NO_ANSWER
     return DONE
+
+
+def _muted_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
+    """Whether the Chromecast is muted, from its status."""
+    try:
+        cast, _, _ = _connection(address)
+        status = cast.status
+    except Exception:  # noqa: BLE001 - any failure of the device means it cannot tell
+        return None
+    return bool(status.volume_muted) if status is not None else None

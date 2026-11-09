@@ -18,7 +18,7 @@ class Speaker:
     ssdp_target = "x"
 
     def __init__(self, level=20, *, works=True):
-        self.level, self.muted, self.works, self.sent = level, False, works, []
+        self.level, self.is_muted, self.works, self.sent = level, False, works, []
 
     def recognises(self, announcement):
         return False
@@ -29,6 +29,9 @@ class Speaker:
     async def volume(self, address):
         return self.level if self.works else None
 
+    async def muted(self, address):
+        return self.is_muted if self.works else None
+
     async def set_volume(self, address, level):
         self.sent.append(("volume", level))
         self.level = level
@@ -36,7 +39,7 @@ class Speaker:
 
     async def set_mute(self, address, *, on):
         self.sent.append(("mute", on))
-        self.muted = on
+        self.is_muted = on
         return self.works
 
 
@@ -116,3 +119,53 @@ def test_a_samsung_takes_volume_and_mute_over_its_standard_rendering_service():
     assert all(port == 9197 and path == "/upnp/control/RenderingControl1" for port, path, _, _ in seen)
     assert "<DesiredVolume>30</DesiredVolume>" in seen[1][3]
     assert "<DesiredMute>1</DesiredMute>" in seen[2][3]
+
+
+class Reading(Speaker):
+    async def muted(self, address):
+        return self.muted_now
+
+    async def playing(self, address):
+        return None
+
+    async def player(self, tv, command, seconds=None):
+        return "unsupported"
+
+
+def test_status_says_how_loud_each_tv_is_and_whether_it_is_muted():
+    driver = Reading(level=15)
+    driver.muted_now = False
+    [report] = asyncio.run(_service(driver).status("the living room"))
+    assert (report["volume"], report["muted"]) == (15, False)
+    driver.muted_now = True
+    [report] = asyncio.run(_service(driver).status("the living room"))
+    assert report["muted"] is True
+
+
+def test_the_status_line_says_the_volume_or_that_it_is_muted():
+    from tv_mcp.tools.say import tv_lines  # noqa: PLC0415
+
+    assert "volume 15" in tv_lines([{"tv": "the living room", "state": "on", "volume": 15, "muted": False}])
+    assert "muted" in tv_lines([{"tv": "the living room", "state": "on", "volume": 15, "muted": True}])
+
+
+def test_a_hands_off_tv_is_never_asked_how_loud_it_is():
+    driver = Reading()
+    driver.muted_now = False
+    [report] = asyncio.run(_service(driver, LIVING, UPSTAIRS).status("upstairs"))
+    assert "volume" not in report
+
+
+def test_a_samsung_says_whether_it_is_muted():
+    def handler(request):
+        return httpx.Response(
+            200,
+            text="<s:Envelope><s:Body><u:GetMuteResponse><CurrentMute>1</CurrentMute>"
+            "</u:GetMuteResponse></s:Body></s:Envelope>",
+        )
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await SamsungTizen(client).muted("192.0.2.10")
+
+    assert asyncio.run(run()) is True

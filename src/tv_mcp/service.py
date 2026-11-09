@@ -97,6 +97,21 @@ class TvService:
         elif isinstance(driver, HasPlayer) and tv.address and (now := await driver.playing(tv.address)):
             report["playing"] = _in_app(now)
 
+    async def _add_sound(self, tv: Tv, report: dict[str, Any]) -> None:
+        """Add to `report` how loud `tv` is and whether it is muted, when the TV says."""
+        driver = self.drivers.get(tv.driver)
+        if (
+            not isinstance(driver, HasSound)
+            or not tv.address
+            or report.get("state") in {ANOTHER_TV, "refused"}
+        ):
+            return
+        level = await driver.volume(tv.address)
+        if level is None:
+            return
+        report["volume"] = level
+        report["muted"] = await driver.muted(tv.address)
+
     async def _films_playing(self, tv: Tv) -> bool:
         return await self._watching(tv, again=0) is not None
 
@@ -167,6 +182,7 @@ class TvService:
         for tv, report in zip(tvs, reports, strict=True):
             if not tv.hands_off:
                 await self._add_playing(tv, report, sessions)
+                await self._add_sound(tv, report)
         return reports
 
     async def discover(self, *, full: bool) -> dict[str, Any]:

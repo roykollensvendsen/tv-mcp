@@ -202,6 +202,12 @@ class SamsungTizen:
         found = re.search(r"<CurrentVolume>(\d+)</CurrentVolume>", answer or "")
         return int(found.group(1)) if found else None
 
+    async def muted(self, address: str) -> bool | None:
+        """Whether the TV's sound is off."""
+        answer = await self._rendering(address, "GetMute")
+        found = re.search(r"<CurrentMute>([01])</CurrentMute>", answer or "")
+        return found.group(1) == "1" if found else None
+
     async def set_volume(self, address: str, level: int) -> bool:
         """Set the TV's volume, 0 to 100; no pairing is needed for this."""
         return (

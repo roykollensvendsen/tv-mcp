@@ -20,8 +20,17 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
             lines.append(report["say"])
         else:
             name = report["tv"] or (f"a {report['model']}" if report.get("model") else "an unknown TV")
-            lines.append(f"{_capital(name)} is {report['state']}{_playing(report.get('playing'))}.")
+            lines.append(
+                f"{_capital(name)} is {report['state']}{_playing(report.get('playing'))}{_sound(report)}."
+            )
     return " ".join(lines)
+
+
+def _sound(report: dict[str, Any]) -> str:
+    """How loud the TV is, as the end of a sentence."""
+    if report.get("muted"):
+        return ", muted"
+    return f", volume {report['volume']}" if report.get("volume") is not None else ""
 
 
 def _playing(playing: dict[str, Any] | None) -> str:
