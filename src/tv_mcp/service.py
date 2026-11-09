@@ -11,7 +11,7 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.media import COMMANDS, spoken_time
+from tv_mcp.media import COMMANDS, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
@@ -28,6 +28,10 @@ class Listen(Protocol):
     """Addresses of the TVs `recognises` accepts; `target` set also searches for that service."""
 
     async def __call__(self, recognises: Callable[[bytes], bool], target: str | None) -> list[str]: ...  # noqa: D102
+
+
+#: How many of a film's cast a scene names, in the order the library bills them.
+CAST_LIMIT = 15
 
 
 class TvService:
@@ -214,6 +218,34 @@ class TvService:
             return _refused(f"{_capital(tv.spoken)} did not answer.")
         done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
         return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
+
+    async def scene(self, name: str, *, minutes: float) -> dict[str, Any]:
+        """The subtitle lines within `minutes` of where the film on `name` is, with its cast."""
+        tv = self._target(name)
+        if not isinstance(tv, Tv):
+            return tv
+        if wrong := await self._itself(tv):
+            return wrong
+        assert self.library is not None  # noqa: S101 - _target checked it
+        watching = next(
+            (s for s in await self.library.sessions() if s.address == tv.address and s.item_id), None
+        )
+        if watching is None or watching.item_id is None:
+            return _refused(f"Nothing is playing on {tv.spoken}.")
+        cues = await self.library.subtitles(watching.item_id)
+        if not cues:
+            return _refused(f"{watching.now_playing} has no subtitles to go by.")
+        position = watching.position or 0.0
+        return {
+            "outcome": "done",
+            "say": f"{watching.now_playing}, {spoken_time(position)} in.",
+            "title": watching.now_playing,
+            "at": spoken_time(position),
+            "lines": scene_lines(cues, position, minutes * 60),
+            "cast": [
+                f"{role}: {actor}" for role, actor in (await self.library.cast(watching.item_id))[:CAST_LIMIT]
+            ],
+        }
 
     async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
         """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""

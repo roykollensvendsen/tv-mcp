@@ -177,3 +177,78 @@ def test_seek_tells_the_session_where_to_go_in_ticks():
     _run(_server(seen), lambda j: j.seek("s1", 67 * 60))
     assert seen[-1].url.path == "/Sessions/s1/Playing/Seek"
     assert seen[-1].url.params["seekPositionTicks"] == str(67 * 60 * TICKS)
+
+
+def _subtitled(streams, srt="1\n00:00:01,000 --> 00:00:02,000\nHello there.\n", seen=None):
+    def handler(request):
+        if seen is not None:
+            seen.append(request.url.path)
+        if request.url.path == "/Users":
+            return httpx.Response(200, json=[{"Id": "u1"}])
+        if request.url.path == "/Items":
+            return httpx.Response(
+                200,
+                json={
+                    "Items": [
+                        {
+                            "Id": "a1",
+                            "MediaSources": [{"Id": "m1", "MediaStreams": streams}],
+                            "People": [
+                                {"Name": "Mark Hamill", "Role": "Luke Skywalker", "Type": "Actor"},
+                                {"Name": "George Lucas", "Type": "Director"},
+                                {"Name": "Carrie Fisher", "Role": "Princess Leia Organa", "Type": "Actor"},
+                            ],
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, text=srt)
+
+    return handler
+
+
+def test_subtitles_come_from_the_items_subtitle_track_as_srt():
+    seen = []
+    streams = [
+        {"Type": "Audio", "Index": 1},
+        {"Type": "Subtitle", "Index": 3, "Codec": "subrip", "Language": "eng"},
+    ]
+    cues = _run(_subtitled(streams, seen=seen), lambda j: j.subtitles("a1"))
+    assert [c.text for c in cues] == ["Hello there."]
+    assert seen[-1] == "/Videos/a1/m1/Subtitles/3/0/Stream.srt"
+
+
+def test_a_track_for_the_hard_of_hearing_is_preferred_since_it_names_who_speaks():
+    seen = []
+    streams = [
+        {"Type": "Subtitle", "Index": 2, "Codec": "subrip", "Language": "eng"},
+        {"Type": "Subtitle", "Index": 4, "Codec": "subrip", "Language": "eng", "IsHearingImpaired": True},
+        {"Type": "Subtitle", "Index": 5, "Codec": "subrip", "Language": "eng", "Title": "English SDH"},
+    ]
+    _run(_subtitled(streams, seen=seen), lambda j: j.subtitles("a1"))
+    assert seen[-1] == "/Videos/a1/m1/Subtitles/4/0/Stream.srt"
+    seen.clear()
+    _run(_subtitled(streams[:1] + streams[2:], seen=seen), lambda j: j.subtitles("a1"))
+    assert seen[-1] == "/Videos/a1/m1/Subtitles/5/0/Stream.srt"
+
+
+def test_an_item_without_subtitles_has_none():
+    assert _run(_subtitled([]), lambda j: j.subtitles("a1")) is None
+
+
+def test_the_cast_is_each_character_with_the_actor_who_plays_them():
+    cast = _run(_subtitled([]), lambda j: j.cast("a1"))
+    assert cast == [("Luke Skywalker", "Mark Hamill"), ("Princess Leia Organa", "Carrie Fisher")]
+
+
+def test_a_session_says_which_item_it_is_playing():
+    from tv_mcp.drivers.jellyfin import _session  # noqa: PLC0415
+
+    page = {
+        "Id": "s1",
+        "Client": "Jellyfin for Tizen",
+        "SupportsRemoteControl": True,
+        "NowPlayingItem": {"Id": "a1", "Name": "A New Hope"},
+        "PlayState": {"PositionTicks": 0},
+    }
+    assert _session(page).item_id == "a1"

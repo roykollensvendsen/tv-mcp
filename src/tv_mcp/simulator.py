@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from tv_mcp.driver import TvInfo
-from tv_mcp.media import MediaItem, Session
+from tv_mcp.media import Cue, MediaItem, Session
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
 
@@ -88,6 +88,14 @@ class SimulatedLibrary:
     async def seek(self, session_id: str, seconds: float) -> None:
         """Remember where it was moved to."""
         self.played.append((session_id, f"seek {seconds}"))
+
+    async def subtitles(self, item_id: str) -> list[Cue] | None:  # noqa: ARG002 - one film's lines for all
+        """A couple of made-up lines."""
+        return [Cue(60.0, 62.0, "Hello there."), Cue(90.0, 92.0, "General Kenobi.")]
+
+    async def cast(self, item_id: str) -> list[tuple[str, str]]:  # noqa: ARG002 - one cast for all
+        """A made-up cast."""
+        return [("Ben", "Example Actor")]
 
     async def play(self, session_id: str, item_id: str, start: float = 0.0) -> None:  # noqa: ARG002 - the simulator starts at the top
         """Remember what was played."""

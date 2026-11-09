@@ -8,6 +8,7 @@ through this interface; ``drivers/jellyfin.py`` is the first implementation.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -37,6 +38,16 @@ class Session:
     position: float | None = None  # seconds in
     runtime: float | None = None  # seconds long
     paused: bool = False
+    item_id: str | None = None  # the id of what is playing, if any
+
+
+@dataclass(frozen=True)
+class Cue:
+    """One subtitle: when it shows, and its words on one line."""
+
+    start: float  # seconds in
+    end: float
+    text: str
 
 
 @dataclass(frozen=True)
@@ -73,6 +84,14 @@ class MediaLibrary(Protocol):
         """Move what the app is playing to `seconds` from its start."""
         ...
 
+    async def subtitles(self, item_id: str) -> list[Cue] | None:
+        """The item's subtitles, from a track for the hard of hearing when it has one; None without any."""
+        ...
+
+    async def cast(self, item_id: str) -> list[tuple[str, str]]:
+        """Each character in the item with the actor who plays them."""
+        ...
+
 
 #: What can be done to something playing.
 COMMANDS = ("pause", "resume", "stop")
@@ -83,3 +102,53 @@ def spoken_time(seconds: float) -> str:
     minutes = int(seconds // 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours} h {minutes} min" if hours else f"{minutes} min"
+
+
+_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")
+_MARKUP = re.compile(r"<[^>]+>|\{[^}]*\}")
+
+#: How much subtitle text a scene gives at most, so the voice sums it up
+#: rather than reading dialogue aloud.
+SCENE_LIMIT = 1200
+
+
+def _at(hours: str, minutes: str, seconds: str, millis: str) -> float:
+    return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000
+
+
+def parse_srt(text: str) -> list[Cue]:
+    """The cues of an SRT file, in order, with markup taken out and lines joined."""
+    cues = []
+    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip()):
+        lines = block.split("\n")
+        for index, line in enumerate(lines):
+            if found := _TIME.search(line):
+                words = " ".join(_MARKUP.sub("", w).strip() for w in lines[index + 1 :])
+                if words.strip():
+                    groups = found.groups()
+                    cues.append(Cue(_at(*groups[:4]), _at(*groups[4:]), " ".join(words.split())))
+                break
+    return cues
+
+
+def _clock(seconds: float) -> str:
+    minutes, rest = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02}:{rest:02}" if hours else f"{minutes}:{rest:02}"
+
+
+def scene_lines(cues: list[Cue], position: float, window: float, limit: int = SCENE_LIMIT) -> list[str]:
+    """The cues within `window` seconds either side of `position`, each with its time.
+
+    When they come to more than `limit` characters, those nearest the position are kept.
+    """
+    near = [c for c in cues if position - window <= c.start <= position + window]
+    kept: list[Cue] = []
+    size = 0
+    for cue in sorted(near, key=lambda c: abs(c.start - position)):
+        line = f"{_clock(cue.start)} {cue.text}"
+        if size + len(line) > limit:
+            break
+        kept.append(cue)
+        size += len(line)
+    return [f"{_clock(c.start)} {c.text}" for c in sorted(kept, key=lambda c: c.start)]

@@ -13,12 +13,14 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from tv_mcp.media import CastLogin, MediaItem, Session
+from tv_mcp.media import CastLogin, Cue, MediaItem, Session, parse_srt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 TIMEOUT = 5.0
+#: A subtitle track inside the film is pulled out of it first, which takes longer.
+SUBTITLE_TIMEOUT = 30.0
 SEARCH_LIMIT = 5
 
 
@@ -86,6 +88,47 @@ class Jellyfin:
         )
         response.raise_for_status()
 
+    async def _details(self, item_id: str) -> dict[str, Any] | None:
+        params = {"ids": item_id, "Fields": "MediaSources,People"}
+        try:
+            if user := await self._user_id():
+                params["userId"] = user
+            page = await self._get("/Items", params)
+        except (httpx.HTTPError, ValueError):
+            return None
+        items = page.get("Items") or []
+        return items[0] if items else None
+
+    async def subtitles(self, item_id: str) -> list[Cue] | None:
+        """The item's subtitles as cues, preferring a track for the hard of hearing."""
+        details = await self._details(item_id)
+        sources = (details or {}).get("MediaSources") or []
+        if not sources:
+            return None
+        tracks = [s for s in sources[0].get("MediaStreams", []) if s.get("Type") == "Subtitle"]
+        if not tracks:
+            return None
+        track = min(tracks, key=lambda s: 0 if _for_the_hard_of_hearing(s) else 1)
+        try:
+            response = await self._client.get(
+                f"{self._url}/Videos/{item_id}/{sources[0]['Id']}/Subtitles/{track['Index']}/0/Stream.srt",
+                headers=self._headers,
+                timeout=SUBTITLE_TIMEOUT,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return None
+        return parse_srt(response.text)
+
+    async def cast(self, item_id: str) -> list[tuple[str, str]]:
+        """Each character with the actor who plays them, in the library's order."""
+        details = await self._details(item_id) or {}
+        return [
+            (p["Role"], p["Name"])
+            for p in details.get("People") or []
+            if p.get("Type") == "Actor" and p.get("Role") and p.get("Name")
+        ]
+
     async def seek(self, session_id: str, seconds: float) -> None:
         """Move what the session is playing to `seconds` from its start."""
         response = await self._client.post(
@@ -113,6 +156,12 @@ TICKS = 10_000_000
 JELLYFIN_COMMANDS = {"pause": "Pause", "resume": "Unpause", "stop": "Stop"}
 
 
+def _for_the_hard_of_hearing(stream: dict[str, Any]) -> bool:
+    """Whether a subtitle track names who speaks and the sounds, as SDH tracks do."""
+    words = f"{stream.get('Title') or ''} {stream.get('DisplayTitle') or ''}".casefold()
+    return bool(stream.get("IsHearingImpaired")) or "sdh" in words.split() or "hearing" in words
+
+
 def _session(page: dict[str, Any]) -> Session:
     endpoint = page.get("RemoteEndPoint")
     address = endpoint.rsplit(":", 1)[0] if endpoint and endpoint.count(":") == 1 else endpoint
@@ -124,6 +173,7 @@ def _session(page: dict[str, Any]) -> Session:
         client=page.get("Client", ""),
         controllable=bool(page.get("SupportsRemoteControl", False)),
         now_playing=playing.get("Name"),
+        item_id=playing.get("Id") or None,
         position=_seconds(state.get("PositionTicks")) if playing else None,
         runtime=_seconds(playing.get("RunTimeTicks")),
         paused=bool(state.get("IsPaused", False)) if playing else False,
