@@ -240,6 +240,9 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
     async def play(self, tv_key: str, screen_id: str, video_id: str) -> bool:
         """Start `video_id`; True only once the screen says it is playing it."""
         from pyytlounge import EventListener, YtLoungeApi  # type: ignore[import-untyped,unused-ignore]  # noqa: PLC0415 - the optional youtube extra
+        from pyytlounge.exceptions import NotSupportedException  # type: ignore[import-untyped,unused-ignore]  # noqa: PLC0415
+
+        self.refusal = None
 
         watch = StartWatch(video_id)
 
@@ -260,7 +263,13 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
                 return False
             file.touch(mode=0o600)
             file.write_text(json.dumps(api.store_auth_state()))
-            if not await api.connect():
+            try:
+                connected = await api.connect()
+            except NotSupportedException:
+                # The screen runs YouTube Kids, which pyytlounge refuses to drive.
+                self.refusal = "kids"
+                return False
+            if not connected:
                 return False
             listening = asyncio.create_task(api.subscribe())
             try:

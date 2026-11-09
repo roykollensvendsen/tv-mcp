@@ -305,3 +305,30 @@ def test_an_advert_before_the_video_counts_as_started_and_is_said():
         _service(Videos([TRAILER]), lounge, YouTubeTv()).play_youtube("XHk5kCIiGoM", "the living room")
     )
     assert answer["say"].endswith("after an advert.")
+
+
+def test_a_youtube_screen_waiting_for_a_profile_gets_a_refusal_that_says_so_and_never_a_raw_error():
+    # 2026-11-09: The Frame's YouTube showed its profile picker, which answers as YouTube Kids.
+    class Kids(Lounge):
+        async def play(self, tv_key, screen_id, video_id):
+            self.refusal = "kids"
+            return False
+
+    answer = asyncio.run(
+        _service(Videos([TRAILER]), Kids(), YouTubeTv()).play_youtube(TRAILER.id, "the living room")
+    )
+    assert answer["outcome"] == "refused"
+    assert "pick a profile" in answer["say"].casefold()
+
+
+def test_a_lounge_that_fails_unexpectedly_gives_a_refusal_not_an_error():
+    class Broken(Lounge):
+        async def play(self, tv_key, screen_id, video_id):
+            message = "the screen hung up"
+            raise RuntimeError(message)
+
+    answer = asyncio.run(
+        _service(Videos([TRAILER]), Broken(), YouTubeTv()).play_youtube(TRAILER.id, "the living room")
+    )
+    assert answer["outcome"] == "refused"
+    assert "did not start" in answer["say"]

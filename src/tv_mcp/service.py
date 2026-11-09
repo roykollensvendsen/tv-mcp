@@ -283,14 +283,30 @@ class TvService:
         screen = await driver.youtube_screen(tv.address or "")
         if screen is None:
             return _refused(f"YouTube did not open on {tv.spoken}.")
-        if not await self.lounge.play(tv.key, screen, video.id):
-            return _refused(f"YouTube opened on {tv.spoken}, but {video.title} did not start.")
+        if refusal := await self._start_video(tv, screen, video):
+            return refusal
         advert = " after an advert" if getattr(self.lounge, "advert", False) else ""
         return {
             "outcome": "playing",
             "say": f"Playing {video.title} on {tv.spoken}{advert}.",
             "video": _video(video),
         }
+
+    async def _start_video(self, tv: Tv, screen: str, video: Video) -> dict[str, Any] | None:
+        """Start `video` on the screen; None once it plays, or the refusal to say."""
+        assert self.lounge is not None  # noqa: S101 - play_youtube checked it
+        try:
+            started = await self.lounge.play(tv.key, screen, video.id)
+        except Exception:  # noqa: BLE001 - whatever the screen does, the voice gets a sentence
+            started = False
+        if not started and getattr(self.lounge, "refusal", None) == "kids":
+            return _refused(
+                f"YouTube on {tv.spoken} is waiting for someone to pick a profile, or has a children's "
+                "profile, which takes no videos sent from here. Pick a profile on the TV, and ask again."
+            )
+        if not started:
+            return _refused(f"YouTube opened on {tv.spoken}, but {video.title} did not start.")
+        return None
 
     def _target(self, name: str) -> Tv | dict[str, Any]:
         """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""
