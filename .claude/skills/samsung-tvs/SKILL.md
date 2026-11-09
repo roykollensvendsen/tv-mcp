@@ -12,7 +12,7 @@ holds what was tested on a real set, with the date:
 | Family | Sub-skill | State |
 |---|---|---|
 | 2022, Tizen 6.5 (The Frame QE55LS03BAUXXC) | [`samsung-tvs-2022-frame`](../samsung-tvs-2022-frame/SKILL.md) | set up and used, 2026-11-08 |
-| 2023, Tizen 7.0 (Q68CA TQ55Q68CAUXXC) | [`samsung-tvs-2023-tizen7`](../samsung-tvs-2023-tizen7/SKILL.md) | **on hold, hands-off** |
+| 2023, Tizen 7.0 (Q68CA TQ55Q68CAUXXC) | [`samsung-tvs-2023-tizen7`](../samsung-tvs-2023-tizen7/SKILL.md) | Jellyfin from the store, being set up, 2026-11-09 |
 
 ## Rules for every Samsung TV
 
