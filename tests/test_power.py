@@ -84,7 +84,8 @@ def test_nothing_switches_without_the_token_from_the_question():
 
 
 def test_a_power_token_works_once():
-    driver = PowerDriver("on")
+    # A TV that stays on, so only the token can refuse the second confirm.
+    driver = PowerDriver("on", obeys=False)
     power = _power(driver)
     _run(power.request("off", "The Frame"))
     _run(power.confirm("token-0"))
