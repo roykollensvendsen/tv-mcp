@@ -170,3 +170,13 @@ def test_one_app_that_does_not_answer_does_not_hide_the_app_in_front():
             return await SamsungTizen(client, tls_client=tls).playing("192.0.2.10")
 
     assert asyncio.run(run()) == Playing(app="Netflix")
+
+
+def test_status_names_the_app_in_front_and_never_says_none_when_the_tv_gives_no_title():
+    # 2026-11-09: "Stua oppe is on, playing None, volume 6." with NRK TV open.
+    from tv_mcp.tools.say import tv_lines  # noqa: PLC0415
+
+    report = {"tv": "stua oppe", "state": "on", "playing": {"app": "NRK TV", "title": None, "paused": False}}
+    line = tv_lines([{**report, "volume": 6}])
+    assert line == "Stua oppe is on, NRK TV is open, volume 6."
+    assert "None" not in line

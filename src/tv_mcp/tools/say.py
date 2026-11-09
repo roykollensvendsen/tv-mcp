@@ -37,6 +37,9 @@ def _playing(playing: dict[str, Any] | None) -> str:
     """What is playing, how far in and what is left, as the end of a sentence."""
     if not playing:
         return ""
+    if not playing.get("title"):
+        # The TV names the app in front but not what it plays, if anything.
+        return f", {playing['app']} is open" if playing.get("app") else ""
     what = f", {playing['title']} is paused" if playing.get("paused") else f", playing {playing['title']}"
     far = [f"{playing['at']} in"] if playing.get("at") else []
     far += [f"{playing['left']} left"] if playing.get("left") else []
