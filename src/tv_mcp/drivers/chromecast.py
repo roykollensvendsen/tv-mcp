@@ -76,6 +76,11 @@ def play_message(login: CastLogin, item: MediaItem, start: float) -> dict[str, A
     return _message(login, "PlayNow", {"items": [said], "startPositionTicks": int(start * TICKS)})
 
 
+def seek_message(login: CastLogin, seconds: float) -> dict[str, Any]:
+    """The message that moves the film to `seconds` from its start."""
+    return _message(login, "Seek", {"position": seconds})
+
+
 def control_message(login: CastLogin, command: str) -> dict[str, Any]:
     """The message for `command`, one of tv_mcp.media.COMMANDS."""
     return _message(login, RECEIVER_COMMANDS[command], {})
@@ -130,6 +135,11 @@ class Chromecast:
         """Start `item` on the Chromecast; False without a user login, or when it does not start."""
         login = await self._login(address)
         return login is not None and await self._send(address, play_message(login, item, start))
+
+    async def cast_seek(self, address: str, seconds: float) -> bool:
+        """Move what the receiver is playing to `seconds` from its start."""
+        login = await self._login(address)
+        return login is not None and await self._send(address, seek_message(login, seconds))
 
     async def cast_control(self, address: str, command: str) -> bool:
         """Pause, resume or stop what the receiver is playing."""

@@ -246,3 +246,53 @@ def test_status_says_what_is_playing_how_far_in_and_how_much_is_left():
     service = _service(FakeLibrary([HOPE], [watching]))
     [report] = asyncio.run(service.status("The Frame"))
     assert report["playing"] == {"title": HOPE.title, "at": "1 h 12 min", "left": "49 min", "paused": False}
+
+
+class SeekingLibrary(ResumingLibrary):
+    def __init__(self, items, sessions):
+        super().__init__(items, sessions)
+        self.seeks = []
+
+    async def seek(self, session_id, seconds):
+        self.seeks.append((session_id, seconds))
+
+
+WATCHING = Session(
+    id="s1",
+    address="192.0.2.10",
+    client="Jellyfin for Tizen",
+    controllable=True,
+    now_playing=HOPE.title,
+    position=30 * 60,
+    runtime=121 * 60,
+    paused=False,
+)
+
+
+def test_play_from_the_start_ignores_where_the_film_was_stopped():
+    library = ResumingLibrary([STOPPED], [FRAME_SESSION])
+    answer = asyncio.run(_service(library).play("A New Hope", "The Frame", from_start=True))
+    assert library.played == [("s1", "a1", 0.0)]
+    assert "from" not in answer["say"]
+
+
+def test_seek_jumps_to_a_time_in_the_film():
+    library = SeekingLibrary([HOPE], [WATCHING])
+    answer = asyncio.run(_service(library).seek("The Frame", 67 * 60, relative=False))
+    assert library.seeks == [("s1", 67 * 60)]
+    assert answer["outcome"] == "done"
+    assert "1 h 7 min" in answer["say"]
+
+
+def test_seek_skips_forward_and_back_from_where_the_film_is():
+    library = SeekingLibrary([HOPE], [WATCHING])
+    asyncio.run(_service(library).seek("The Frame", 10 * 60, relative=True))
+    asyncio.run(_service(library).seek("The Frame", -45 * 60, relative=True))
+    assert library.seeks == [("s1", 40 * 60), ("s1", 0)]
+
+
+def test_seek_needs_something_playing():
+    library = SeekingLibrary([HOPE], [FRAME_SESSION])
+    answer = asyncio.run(_service(library).seek("The Frame", 60, relative=True))
+    assert answer["outcome"] == "refused"
+    assert library.seeks == []

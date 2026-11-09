@@ -189,3 +189,43 @@ def test_a_cast_that_does_not_start_is_reported_as_not_playing():
 
     driver = Chromecast(httpx.AsyncClient(), login=_login, send=send)
     assert asyncio.run(driver.cast("192.0.2.20", HOPE, 0)) is False
+
+
+def test_seek_is_the_receivers_own_command_in_seconds():
+    from tv_mcp.drivers.chromecast import seek_message  # noqa: PLC0415
+
+    message = seek_message(LOGIN, 67 * 60)
+    assert (message["command"], message["options"]) == ("Seek", {"position": 67 * 60})
+
+
+def test_seek_on_a_chromecast_tv_goes_to_the_chromecast():
+    class Seeking(CastDriver):
+        def __init__(self):
+            super().__init__()
+            self.seeks = []
+
+        async def cast_seek(self, address, seconds):
+            self.seeks.append((address, seconds))
+            return True
+
+    class Watching(Library):
+        async def sessions(self):
+            return [
+                Session(
+                    id="c1",
+                    address="192.0.2.20",
+                    client="Chromecast",
+                    controllable=False,
+                    now_playing="A New Hope",
+                    position=600,
+                    runtime=7200,
+                )
+            ]
+
+    driver = Seeking()
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={driver.key: driver}, listen=_no_listen, library=Watching()
+    )
+    answer = asyncio.run(service.seek("garage", -300, relative=True))
+    assert answer["outcome"] == "done", answer
+    assert driver.seeks == [("192.0.2.20", 300)]

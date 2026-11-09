@@ -8,6 +8,7 @@ the network is passed in, so the tests need neither a TV nor a network.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from tv_mcp.media import COMMANDS, spoken_time
@@ -214,8 +215,37 @@ class TvService:
         done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
         return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
 
-    async def play(self, title: str, name: str) -> dict[str, Any]:
-        """Start `title` on the TV called `name`, through Jellyfin on that TV."""
+    async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
+        """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""
+        tv = self._target(name)
+        if not isinstance(tv, Tv):
+            return tv
+        if wrong := await self._itself(tv):
+            return wrong
+        assert self.library is not None  # noqa: S101 - _target checked it
+        watching = next(
+            (s for s in await self.library.sessions() if s.address == tv.address and s.now_playing), None
+        )
+        if watching is None:
+            return _refused(f"Nothing is playing on {tv.spoken}.")
+        target = (watching.position or 0.0) + seconds if relative else seconds
+        target = max(0.0, min(target, watching.runtime or target))
+        caster = self._caster(tv)
+        if caster is not None:
+            if not await caster.cast_seek(tv.address or "", target):
+                return _refused(f"{_capital(tv.spoken)} did not answer.")
+        else:
+            session = await self._session(tv)
+            if session is None:
+                return _refused(f"Jellyfin is not open on {tv.spoken}.")
+            await self.library.seek(session.id, target)
+        return {
+            "outcome": "done",
+            "say": f"Jumped to {spoken_time(target)} in {watching.now_playing} on {tv.spoken}.",
+        }
+
+    async def play(self, title: str, name: str, *, from_start: bool = False) -> dict[str, Any]:
+        """Start `title` on the TV called `name`, where it was stopped unless `from_start`."""
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
@@ -226,15 +256,17 @@ class TvService:
         chosen = _choose(title, found)
         if not isinstance(chosen, str):
             return chosen
+        item = next(i for i in found if i.id == chosen)
+        if from_start:
+            item = replace(item, position=None)
         caster = self._caster(tv)
         if caster is not None:
-            return await self._cast(caster, tv, next(i for i in found if i.id == chosen))
+            return await self._cast(caster, tv, item)
         session = await self._session(tv) or await self._open_jellyfin(tv)
         if session is None:
             return _refused(
                 f"Jellyfin is not open on {tv.spoken}, and I could not open it. Open it there first."
             )
-        item = next(i for i in found if i.id == chosen)
         if item.position:
             await self.library.play(session.id, item.id, start=item.position)
             where = f" from {spoken_time(item.position)}"

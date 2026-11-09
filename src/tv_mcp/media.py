@@ -69,6 +69,10 @@ class MediaLibrary(Protocol):
         """Send `command` (one of COMMANDS) to what the app is playing."""
         ...
 
+    async def seek(self, session_id: str, seconds: float) -> None:
+        """Move what the app is playing to `seconds` from its start."""
+        ...
+
 
 #: What can be done to something playing.
 COMMANDS = ("pause", "resume", "stop")

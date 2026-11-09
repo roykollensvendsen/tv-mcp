@@ -91,6 +91,10 @@ class Casts(Protocol):
         """Pause, resume or stop it (tv_mcp.media.COMMANDS); False when it did not."""
         ...
 
+    async def cast_seek(self, address: str, seconds: float) -> bool:
+        """Move it to `seconds` from its start; False when it did not."""
+        ...
+
 
 class Switches(Protocol):
     """A driver that can switch its TV on or off."""

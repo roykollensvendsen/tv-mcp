@@ -86,6 +86,16 @@ class Jellyfin:
         )
         response.raise_for_status()
 
+    async def seek(self, session_id: str, seconds: float) -> None:
+        """Move what the session is playing to `seconds` from its start."""
+        response = await self._client.post(
+            f"{self._url}/Sessions/{session_id}/Playing/Seek",
+            params={"seekPositionTicks": str(int(seconds * TICKS))},
+            headers=self._headers,
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+
     async def control(self, session_id: str, command: str) -> None:
         """Pause, resume or stop what the session is playing."""
         response = await self._client.post(

@@ -170,3 +170,10 @@ def test_a_cast_login_uses_the_users_own_token_and_an_address_the_chromecast_can
     login = asyncio.run(run())
     assert (login.server, login.user_id, login.server_id) == ("http://192.0.2.5:8096", "u1", "srv")
     assert all('Token="user-token"' in h for h in seen)
+
+
+def test_seek_tells_the_session_where_to_go_in_ticks():
+    seen = []
+    _run(_server(seen), lambda j: j.seek("s1", 67 * 60))
+    assert seen[-1].url.path == "/Sessions/s1/Playing/Seek"
+    assert seen[-1].url.params["seekPositionTicks"] == str(67 * 60 * TICKS)
