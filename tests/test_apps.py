@@ -30,7 +30,7 @@ class FakeDriver:
     async def read_info(self, address):
         return None
 
-    async def close_app(self, address, app_id):
+    async def close_app(self, address, app_id, *, tv_key=None):
         self.closed.append((address, app_id))
         return True
 
@@ -190,3 +190,46 @@ def test_an_app_is_not_opened_on_a_tv_that_answers_as_another_device():
     assert answer["outcome"] == "refused"
     assert "Another TV" in answer["say"]
     assert driver.opened == []
+
+
+def _refusing_tv(tmp_path, pressed, *, leaves):
+    """A TV that refuses the close call; Home takes the app off the screen only if `leaves`."""
+    state = {"visible": True}
+
+    def handler(request):
+        if request.method == "DELETE":
+            return httpx.Response(501, json={"message": "not allowed"})
+        return httpx.Response(200, json={"running": True, "visible": state["visible"]})
+
+    class Remote:
+        def send_key(self, key):
+            pressed.append(key)
+            state["visible"] = not leaves
+
+        def close(self):
+            pass
+
+    def remote(address, token_file):
+        assert token_file == tmp_path / "upstairs-token"
+        return Remote()
+
+    async def no_wait(seconds):
+        return None
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            tv = SamsungTizen(client, tls_client=client, token_folder=tmp_path, remote=remote, sleep=no_wait)
+            return await tv.close_app("192.0.2.11", "3201907018807", tv_key="upstairs")
+
+    return asyncio.run(run())
+
+
+def test_a_tv_that_refuses_to_close_an_app_gets_the_home_key_and_is_checked(tmp_path):
+    # 2026-11-09: the 2023 Q68CA (Tizen 7.0) refuses to close Netflix over its app interface.
+    pressed = []
+    assert _refusing_tv(tmp_path, pressed, leaves=True) is True
+    assert pressed == ["KEY_HOME"]
+
+
+def test_an_app_still_on_screen_after_home_is_not_called_closed(tmp_path):
+    assert _refusing_tv(tmp_path, [], leaves=False) is False

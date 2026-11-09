@@ -61,6 +61,8 @@ TIZEN_BY_YEAR = {2020: "5.5", 2021: "6.0", 2022: "6.5", 2023: "7.0", 2024: "8.0"
 TIMEOUT = 3.0
 #: The remote's media keys, by command.
 MEDIA_KEYS = {"pause": "KEY_PAUSE", "resume": "KEY_PLAY", "stop": "KEY_STOP"}
+#: How many seconds to wait for an app to leave the screen after Home.
+HOME_TRIES = 5
 #: How long the remote connection gets to send one key.
 KEY_WAIT = 10.0
 #: How each app is named aloud.
@@ -243,26 +245,16 @@ class SamsungTizen:
             return UNSUPPORTED
         if tv.address is None:
             return NO_ANSWER
-        token_file = self._token_folder / f"{tv.key}-token"
+        return DONE if await self._press(tv.address, tv.key, key) else NO_ANSWER
 
-        def press() -> None:
-            remote = self._remote(tv.address or "", token_file)
-            try:
-                remote.send_key(key)
-            finally:
-                remote.close()
-
-        try:
-            await asyncio.wait_for(asyncio.to_thread(press), KEY_WAIT)
-        except Exception:  # noqa: BLE001 - any failure of the remote connection means no answer
-            return NO_ANSWER
-        return DONE
-
-    async def close_app(self, address: str, app_id: str) -> bool:
+    async def close_app(self, address: str, app_id: str, *, tv_key: str | None = None) -> bool:
         """Close `app_id` on the TV; no pairing is needed for this.
 
         An app that is not running counts as closed. The TV is not asked to
-        close it, because a 2022 Frame drops the connection when it is.
+        close it, because a 2022 Frame drops the connection when it is. A TV
+        that refuses to close it (the 2023 Q68CA on Tizen 7.0) gets the
+        remote's Home key instead, when it is paired, and the app counts as
+        closed once it is off the screen.
         """
         url = f"https://{address}:8002/api/v2/applications/{app_id}"
         try:
@@ -272,7 +264,36 @@ class SamsungTizen:
             response = await self._tls.delete(url, timeout=5)
         except (httpx.HTTPError, ValueError):
             return False
-        return response.is_success
+        if response.is_success:
+            return True
+        if tv_key is None or not await self._press(address, tv_key, "KEY_HOME"):
+            return False
+        for _ in range(HOME_TRIES):
+            await self._sleep(1.0)
+            try:
+                state = await self._tls.get(url, timeout=5)
+                if state.is_success and state.json().get("visible") is False:
+                    return True
+            except (httpx.HTTPError, ValueError):
+                continue
+        return False
+
+    async def _press(self, address: str, tv_key: str, key: str) -> bool:
+        """Press one remote key on the TV over its paired connection."""
+        token_file = self._token_folder / f"{tv_key}-token"
+
+        def press() -> None:
+            remote = self._remote(address, token_file)
+            try:
+                remote.send_key(key)
+            finally:
+                remote.close()
+
+        try:
+            await asyncio.wait_for(asyncio.to_thread(press), KEY_WAIT)
+        except Exception:  # noqa: BLE001 - any failure of the remote connection means no answer
+            return False
+        return True
 
     async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Switch `tv` on or off.

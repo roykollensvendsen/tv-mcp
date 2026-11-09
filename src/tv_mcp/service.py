@@ -334,7 +334,7 @@ class TvService:
         tv, driver, app_id = found
         if wrong := await self._itself(tv):
             return wrong
-        if not await cast("ClosesApps", driver).close_app(tv.address or "", app_id):
+        if not await cast("ClosesApps", driver).close_app(tv.address or "", app_id, tv_key=tv.key):
             return _refused(f"{tv.spoken} did not close {app}.")
         return {"outcome": "done", "say": f"Closed {app} on {tv.spoken}."}
 

@@ -46,7 +46,7 @@ class SimulatedTv:
         """Pretend to open the app."""
         return True
 
-    async def close_app(self, address: str, app_id: str) -> bool:  # noqa: ARG002 - nothing to close
+    async def close_app(self, address: str, app_id: str, *, tv_key: str | None = None) -> bool:  # noqa: ARG002 - nothing to close
         """Pretend to close the app."""
         return True
 

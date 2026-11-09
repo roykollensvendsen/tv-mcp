@@ -64,7 +64,7 @@ class ClosesApps(Protocol):
     #: The apps it knows, by lower-case spoken name, with the TV's id for each.
     apps: Mapping[str, str]
 
-    async def close_app(self, address: str, app_id: str) -> bool:
+    async def close_app(self, address: str, app_id: str, *, tv_key: str | None = None) -> bool:
         """Close the app; False when the TV did not do it."""
         ...
 
