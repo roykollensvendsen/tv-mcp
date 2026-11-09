@@ -24,12 +24,13 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from tv_mcp.driver import TvInfo
+from tv_mcp.driver import DONE, NO_ANSWER, UNSUPPORTED, Playing, TvInfo
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from tv_mcp.media import CastLogin, MediaItem
+    from tv_mcp.settings import Tv
 
 #: Jellyfin's stable receiver app, which the server sets up by default.
 JELLYFIN_RECEIVER = "F007D354"
@@ -135,6 +136,28 @@ class Chromecast:
         """Start `item` on the Chromecast; False without a user login, or when it does not start."""
         login = await self._login(address)
         return login is not None and await self._send(address, play_message(login, item, start))
+
+    async def playing(self, address: str) -> Playing | None:
+        """What plays on the Chromecast, in whatever app: Jellyfin, YouTube or another."""
+        return await asyncio.to_thread(_playing_blocking, address)
+
+    async def player(self, tv: Tv, command: str, seconds: float | None = None) -> str:
+        """Pause, resume, stop or seek in the app playing.
+
+        Jellyfin's receiver takes its own commands; any other app takes the
+        Chromecast's standard media commands.
+        """
+        address = tv.address or ""
+        app = await asyncio.to_thread(_app_blocking, address)
+        if app is None:
+            return NO_ANSWER
+        if app == JELLYFIN_RECEIVER:
+            if command == "seek":
+                sent = await self.cast_seek(address, seconds or 0.0)
+            else:
+                sent = await self.cast_control(address, command)
+            return DONE if sent else NO_ANSWER
+        return await asyncio.to_thread(_media_blocking, address, command, seconds)
 
     async def volume(self, address: str) -> int | None:
         """The Chromecast's own volume, 0 to 100."""
@@ -322,3 +345,77 @@ def _sound_blocking(address: str, level: int | None, mute: bool | None) -> int |
     except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
         _connections.pop(address, None)
         return None
+
+
+#: What the Chromecast shows when no app is open.
+IDLE_APPS = {"Backdrop", None}
+
+
+def _app_blocking(address: str) -> str | None:  # pragma: no cover - a real device
+    """The id of the app open on the Chromecast, or None when it does not answer."""
+    try:
+        import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415, F401 - the optional chromecast extra
+    except ImportError:
+        return None
+    try:
+        cast, _, _ = _connection(address)
+    except (OSError, TimeoutError, ValueError, KeyError):
+        return None
+    return str(cast.app_id) if cast.app_id else None
+
+
+def _playing_blocking(address: str) -> Playing | None:  # pragma: no cover - a real device
+    """What the app open on the Chromecast is playing, from its media status."""
+    try:
+        cast, _, _ = _connection(address)
+        if cast.app_display_name in IDLE_APPS:
+            return None
+        media = cast.media_controller
+        media.update_status()
+        time.sleep(1.0)
+        status = media.status
+    except Exception:  # noqa: BLE001 - any failure of the device means it cannot tell
+        return None
+    if status is None or status.player_state in {"IDLE", "UNKNOWN", None}:
+        return None
+    return Playing(
+        app=cast.app_display_name,
+        title=status.title,
+        position=status.adjusted_current_time,
+        runtime=status.duration,
+        paused=status.player_state == "PAUSED",
+    )
+
+
+def _media_blocking(
+    address: str, command: str, seconds: float | None
+) -> str:  # pragma: no cover - a real device
+    """Send the Chromecast's standard media `command` to the app open on it."""
+    try:
+        cast, _, _ = _connection(address)
+        media = cast.media_controller
+        media.update_status()
+        time.sleep(1.0)
+        status = media.status
+        able = {
+            "pause": status.supports_pause,
+            "resume": status.supports_pause,
+            "seek": status.supports_seek,
+            "stop": True,
+        }[command]
+        if not able:
+            return UNSUPPORTED
+        if command == "pause":
+            media.pause()
+        elif command == "resume":
+            media.play()
+        elif command == "seek":
+            media.seek(seconds or 0.0)
+        else:
+            try:
+                media.stop()
+            except Exception:  # noqa: BLE001 - an app that will not stop is closed instead
+                cast.quit_app()
+    except Exception:  # noqa: BLE001 - any failure of the device means no answer
+        return NO_ANSWER
+    return DONE

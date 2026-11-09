@@ -12,7 +12,7 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.driver import HasSound, ShowsYouTube
+from tv_mcp.driver import DONE, UNSUPPORTED, HasPlayer, HasSound, ShowsYouTube
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 from tv_mcp.video import Video, is_video_id
@@ -20,7 +20,7 @@ from tv_mcp.video import Video, is_video_id
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, TvInfo
+    from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, Playing, TvInfo
     from tv_mcp.media import MediaItem, MediaLibrary, Session
     from tv_mcp.video import Lounge, VideoSearch
 
@@ -75,17 +75,55 @@ class TvService:
         self._moved: dict[str, tuple[float, float]] = {}
         self.videos, self.lounge = videos, lounge
 
-    async def _watching(self, tv: Tv) -> Session | None:
-        """What plays on `tv`, asked again for a moment when it seems gone (a Chromecast after a seek)."""
-        assert self.library is not None  # noqa: S101 - callers checked it
-        for attempt in range(LOOK_AGAIN + 1):
+    async def _watching(self, tv: Tv, again: int = LOOK_AGAIN) -> Session | None:
+        """What plays on `tv` in Jellyfin, asked `again` more times when it seems gone."""
+        if self.library is None:
+            return None
+        for attempt in range(again + 1):
             sessions = await self.library.sessions()
             watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
             if watching is not None:
                 return replace(watching, position=self._position(tv, watching))
-            if attempt < LOOK_AGAIN:
+            if attempt < again:
                 await self._sleep(1.0)
         return None
+
+    async def _add_playing(self, tv: Tv, report: dict[str, Any], sessions: list[Session]) -> None:
+        """Add to `report` what plays on `tv`: Jellyfin's film, or else whatever its app plays."""
+        watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
+        driver = self.drivers.get(tv.driver)
+        if watching:
+            report["playing"] = _playing(replace(watching, position=self._position(tv, watching)))
+        elif isinstance(driver, HasPlayer) and tv.address and (now := await driver.playing(tv.address)):
+            report["playing"] = _in_app(now)
+
+    async def _films_playing(self, tv: Tv) -> bool:
+        return await self._watching(tv, again=0) is not None
+
+    async def _any_app(
+        self, driver: HasPlayer, tv: Tv, command: str, seconds: float | None = None, *, relative: bool = False
+    ) -> dict[str, Any]:
+        """`command` for whatever plays on `tv`, through the driver, in any app."""
+        address = tv.address or ""
+        playing = await driver.playing(address)
+        if playing is None:
+            return _refused(f"Nothing is playing on {tv.spoken}.")
+        target = None
+        if command == "seek":
+            wanted = (playing.position or 0.0) + (seconds or 0.0) if relative else (seconds or 0.0)
+            target = max(0.0, min(wanted, playing.runtime or wanted))
+        answer = await driver.player(tv, command, target)
+        app = playing.app or "The app"
+        if answer == UNSUPPORTED:
+            return _refused(f"{app} on {tv.spoken} cannot {command}.")
+        if answer != DONE:
+            return _refused(f"{_capital(tv.spoken)} did not answer.")
+        if target is not None:
+            self._moved[tv.key] = (target, self._clock())
+            title = playing.title or "it"
+            return {"outcome": "done", "say": f"Jumped to {spoken_time(target)} in {title} on {tv.spoken}."}
+        done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
+        return {"outcome": "done", "say": f"{done} {app} on {tv.spoken}."}
 
     def _position(self, tv: Tv, watching: Session) -> float | None:
         """Where the film is: where it was just sent, if that was moments ago, or else what the TV says."""
@@ -127,9 +165,8 @@ class TvService:
         reports = [await self._read(tv) for tv in tvs]
         sessions = await self.library.sessions() if self.library else []
         for tv, report in zip(tvs, reports, strict=True):
-            watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
-            if watching and not tv.hands_off:
-                report["playing"] = _playing(replace(watching, position=self._position(tv, watching)))
+            if not tv.hands_off:
+                await self._add_playing(tv, report, sessions)
         return reports
 
     async def discover(self, *, full: bool) -> dict[str, Any]:
@@ -297,7 +334,7 @@ class TvService:
                 return session
         return None
 
-    async def control(self, command: str, name: str) -> dict[str, Any]:
+    async def control(self, command: str, name: str) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per reason
         """Pause, resume or stop what is playing on the TV called `name`."""
         if command not in COMMANDS:
             return _refused(f"I can {', '.join(COMMANDS)}; not {command!r}.")
@@ -306,7 +343,11 @@ class TvService:
             return tv
         if wrong := await self._itself(tv):
             return wrong
+        driver = self.drivers.get(tv.driver)
         caster = self._caster(tv)
+        films = await self._session(tv) if caster is None and self.library else None
+        if isinstance(driver, HasPlayer) and not (films and await self._films_playing(tv)):
+            return await self._any_app(driver, tv, command)
         if caster is not None:
             sent = await caster.cast_control(tv.address or "", command)
         else:
@@ -387,7 +428,7 @@ class TvService:
         capped = f", at most {LOUDEST}" if wanted > LOUDEST else ""
         return {"outcome": "done", "say": f"Volume {target} on {tv.spoken}{capped}.", "volume": target}
 
-    async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
+    async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per reason
         """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""
         tv = self._target(name)
         if not isinstance(tv, Tv):
@@ -395,7 +436,13 @@ class TvService:
         if wrong := await self._itself(tv):
             return wrong
         assert self.library is not None  # noqa: S101 - _target checked it
-        watching = await self._watching(tv)
+        driver = self.drivers.get(tv.driver)
+        if isinstance(driver, HasPlayer):
+            watching = await self._watching(tv, again=0)
+            if watching is None or self._caster(tv) is not None:
+                return await self._any_app(driver, tv, "seek", seconds, relative=relative)
+        else:
+            watching = await self._watching(tv)
         if watching is None:
             return _refused(f"Nothing is playing on {tv.spoken}.")
         target = (watching.position or 0.0) + seconds if relative else seconds
@@ -548,3 +595,14 @@ def _video(video: Video) -> dict[str, Any]:
         "channel": video.channel,
         "length": spoken_time(video.duration) if video.duration else None,
     }
+
+
+def _in_app(playing: Playing) -> dict[str, Any]:
+    """What plays in an app other than Jellyfin, as status reports it."""
+    report: dict[str, Any] = {"app": playing.app, "title": playing.title}
+    if playing.position is not None:
+        report["at"] = spoken_time(playing.position)
+    if playing.runtime and playing.position is not None:
+        report["left"] = spoken_time(max(playing.runtime - playing.position, 0))
+    report["paused"] = playing.paused
+    return report

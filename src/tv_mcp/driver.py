@@ -128,3 +128,31 @@ class HasSound(Protocol):
     async def set_mute(self, address: str, *, on: bool) -> bool:
         """Mute or unmute; False when the TV did not take it."""
         ...
+
+
+@dataclass(frozen=True)
+class Playing:
+    """What plays on a TV, in whatever app is in front."""
+
+    app: str | None
+    title: str | None = None
+    position: float | None = None  # seconds in
+    runtime: float | None = None  # seconds long
+    paused: bool = False
+
+
+#: What a player says to a command: done, the app cannot do it, or no answer.
+DONE, UNSUPPORTED, NO_ANSWER = "done", "unsupported", "no answer"
+
+
+@runtime_checkable
+class HasPlayer(Protocol):
+    """A driver that can see and control what plays in any app, not only Jellyfin."""
+
+    async def playing(self, address: str) -> Playing | None:
+        """What plays in the app in front, or None when nothing does."""
+        ...
+
+    async def player(self, tv: Tv, command: str, seconds: float | None = None) -> str:
+        """Pause, resume, stop, or seek to `seconds` on `tv`: DONE, UNSUPPORTED or NO_ANSWER."""
+        ...

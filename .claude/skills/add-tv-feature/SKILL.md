@@ -59,6 +59,15 @@ A rule (a refusal, a limit, a safety check) is one line marked
   everyone; anything else is opt-in under `[features] enabled`. Adding to
   the default set raises `tests/test_context_budget.py`'s numbers on purpose,
   in that pull request, with the reason stated.
+- **The same controls work in every app.** Pause, resume, stop, seek, mute,
+  volume and "what is playing" act on whatever plays on that TV, Jellyfin,
+  YouTube or another app, not only on what tv-mcp started. Jellyfin goes
+  first, through its session. Anything else goes through the driver's
+  player (`driver.HasPlayer`: `playing` and `player`): on a Chromecast the
+  open app's media session, on a Samsung the remote's media keys. A new
+  control is added there for every driver. An app that cannot do it gets a
+  plain refusal naming the app ("YouTube on the garage cannot seek"), never
+  a silent "done".
 
 ## 5. Keep the household safe
 

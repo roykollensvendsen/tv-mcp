@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 import httpx
 
-from tv_mcp.driver import TvInfo
+from tv_mcp.driver import DONE, NO_ANSWER, UNSUPPORTED, Playing, TvInfo
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -59,6 +59,12 @@ def _send_wake(mac: str) -> None:  # pragma: no cover - sends to the network
 #: Tizen version by model year, from Samsung's release history.
 TIZEN_BY_YEAR = {2020: "5.5", 2021: "6.0", 2022: "6.5", 2023: "7.0", 2024: "8.0", 2025: "9.0"}
 TIMEOUT = 3.0
+#: The remote's media keys, by command.
+MEDIA_KEYS = {"pause": "KEY_PAUSE", "resume": "KEY_PLAY", "stop": "KEY_STOP"}
+#: How long the remote connection gets to send one key.
+KEY_WAIT = 10.0
+#: How each app is named aloud.
+APP_NAMES = {"jellyfin": "Jellyfin", "netflix": "Netflix", "nrk": "NRK TV", "youtube": "YouTube"}
 #: The standard UPnP service the TV takes volume and mute through, on port 9197.
 RENDERING = "urn:schemas-upnp-org:service:RenderingControl:1"
 #: Where a YouTube remote says it comes from; the TV's DIAL answers no one else.
@@ -205,6 +211,46 @@ class SamsungTizen:
     async def set_mute(self, address: str, *, on: bool) -> bool:
         """Mute or unmute the TV."""
         return await self._rendering(address, "SetMute", f"<DesiredMute>{int(on)}</DesiredMute>") is not None
+
+    async def _running(self, address: str) -> str | None:
+        """The spoken name of the known app that runs on the TV, or None."""
+        for name, app_id in self.apps.items():
+            try:
+                state = await self._tls.get(
+                    f"https://{address}:8002/api/v2/applications/{app_id}", timeout=TIMEOUT
+                )
+                if state.is_success and state.json().get("visible") is True:
+                    return name
+            except (httpx.HTTPError, ValueError):
+                return None
+        return None
+
+    async def playing(self, address: str) -> Playing | None:
+        """The app in front, by name; the TV does not say what that app plays or how far in."""
+        app = await self._running(address)
+        return Playing(app=APP_NAMES.get(app, app)) if app else None
+
+    async def player(self, tv: Tv, command: str, seconds: float | None = None) -> str:  # noqa: ARG002 - seek is refused
+        """Pause, resume or stop with the remote's media keys, which most apps take; seek is not a key."""
+        key = MEDIA_KEYS.get(command)
+        if key is None:
+            return UNSUPPORTED
+        if tv.address is None:
+            return NO_ANSWER
+        token_file = self._token_folder / f"{tv.key}-token"
+
+        def press() -> None:
+            remote = self._remote(tv.address or "", token_file)
+            try:
+                remote.send_key(key)
+            finally:
+                remote.close()
+
+        try:
+            await asyncio.wait_for(asyncio.to_thread(press), KEY_WAIT)
+        except Exception:  # noqa: BLE001 - any failure of the remote connection means no answer
+            return NO_ANSWER
+        return DONE
 
     async def close_app(self, address: str, app_id: str) -> bool:
         """Close `app_id` on the TV; no pairing is needed for this.

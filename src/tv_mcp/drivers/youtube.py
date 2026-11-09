@@ -271,6 +271,9 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
                         await asyncio.wait_for(watch.started.wait(), START_WAIT)
                     if watch.started.is_set():
                         self.advert = watch.advert
+                        # One video was asked for: do not run on into the next.
+                        with contextlib.suppress(Exception):
+                            await api.set_auto_play_mode(enabled=False)
                         return True
                 return False
             finally:

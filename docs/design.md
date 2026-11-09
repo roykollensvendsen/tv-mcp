@@ -246,6 +246,28 @@ Researched 2026-11-09 from sources only; nothing below is tried yet.
 6. A simulated mode (`tv-mcp serve --simulate`) answers the same tools from a
    fake TV and a fake Jellyfin, for the tests and for the first try by voice.
 
+## The same controls in every app
+
+Pause, resume, stop, seek, mute, volume and what `tv_status` says is playing
+act on whatever plays on a TV, whichever app it is in, not only on what
+tv-mcp started. When Jellyfin plays, its session is used, as it says the
+title and the position. Otherwise each driver's player answers
+(`driver.HasPlayer`):
+
+- **Chromecast:** the open app's media session. Jellyfin's receiver takes its
+  own commands; YouTube and other apps take the Chromecast's standard media
+  commands. Its media status gives the app, the title and the position.
+- **Samsung:** the app in front, from the TV's app status, and the remote's
+  media keys (play, pause, stop), which most apps take. The TV does not say
+  what an app plays, and seek is not a key, so a seek outside Jellyfin is
+  refused. The keys need the paired remote connection, which hangs on both
+  Samsungs today (2026-11-09), so they answer "did not answer" until that is
+  fixed.
+
+An app that cannot do a command is named in a plain refusal. When tv-mcp
+starts one YouTube video it turns YouTube's autoplay off, so it does not
+run on into the next.
+
 ## Layers, drivers and features
 
 The project is meant to take support for other people's TVs, so it is built
