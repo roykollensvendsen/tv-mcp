@@ -41,6 +41,8 @@ DEFAULT_PATH = "~/.config/tv-mcp/config.toml"
 KEY_FILE = "jellyfin-key"
 #: A user's own login, for a Chromecast to fetch films as that user (Quick Connect gives one).
 USER_TOKEN_FILE = "jellyfin-user-token"  # noqa: S105 - a file name, not a token
+#: A key for YouTube's Data API, for searching the official way; optional.
+YOUTUBE_KEY_FILE = "youtube-key"
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,7 @@ class Settings:
     jellyfin_url: str | None = None
     jellyfin_key: str | None = None
     jellyfin_user_token: str | None = None
+    youtube_key: str | None = None
     #: The features switched on; None means the default set (tv_mcp.tools).
     features: tuple[str, ...] | None = None
 
@@ -127,6 +130,7 @@ def load_settings(path: pathlib.Path) -> Settings:
         jellyfin_url=jellyfin.get("url"),
         jellyfin_key=jellyfin.get("api_key") or _key_file(path),
         jellyfin_user_token=_key_file(path, USER_TOKEN_FILE),
+        youtube_key=_key_file(path, YOUTUBE_KEY_FILE),
         features=tuple(enabled) if enabled is not None else None,
     )
 

@@ -15,17 +15,10 @@ if TYPE_CHECKING:
 
 def register(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
     """Add ``tv_search`` and ``tv_play``."""
-
-    @server.tool(description="Find films and episodes by title.")
-    async def tv_search(title: str) -> dict[str, Any]:
-        found = await service.search(title)
-        say = found.get("say") or items_line(title, found["items"])
-        return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
-
-    @server.tool(description="Play a film or episode on a TV, from where it stopped.")
-    async def tv_play(title: str, tv: str, from_start: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002
-        answer = await service.play(title, tv, from_start=from_start)
-        return {"success": answer["outcome"] == "playing", "simulated": simulated, **answer}
+    if service.videos is not None:
+        _register_with_youtube(server, service, simulated)
+    else:
+        _register_films(server, service, simulated)
 
     @server.tool(
         description="Pause, resume, stop or seek on a TV; seek to seconds, or skip them if relative."
@@ -44,3 +37,47 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
         else:
             answer = await service.control(command, tv)
         return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}
+
+
+def _register_films(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
+    """Search and play the owner's films."""
+
+    @server.tool(description="Find films and episodes by title.")
+    async def tv_search(title: str) -> dict[str, Any]:
+        found = await service.search(title)
+        say = found.get("say") or items_line(title, found["items"])
+        return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
+
+    @server.tool(description="Play a film or episode on a TV, from where it stopped.")
+    async def tv_play(title: str, tv: str, from_start: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002
+        answer = await service.play(title, tv, from_start=from_start)
+        return {"success": answer["outcome"] == "playing", "simulated": simulated, **answer}
+
+
+def _register_with_youtube(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
+    """Search and play with a source: the owner's films, or YouTube."""
+
+    @server.tool(description="Find films and episodes by title, or YouTube videos with source youtube.")
+    async def tv_search(title: str, source: Literal["jellyfin", "youtube"] = "jellyfin") -> dict[str, Any]:
+        if source == "youtube":
+            found = await service.search_youtube(title)
+            return {"success": bool(found["items"]), "simulated": simulated, **found}
+        found = await service.search(title)
+        say = found.get("say") or items_line(title, found["items"])
+        return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
+
+    @server.tool(
+        description="Play a film or episode on a TV, from where it stopped; with source youtube,"
+        " a video by its id or words."
+    )
+    async def tv_play(
+        title: str,
+        tv: str,
+        from_start: bool = False,  # noqa: FBT001, FBT002
+        source: Literal["jellyfin", "youtube"] = "jellyfin",
+    ) -> dict[str, Any]:
+        if source == "youtube":
+            answer = await service.play_youtube(title, tv)
+        else:
+            answer = await service.play(title, tv, from_start=from_start)
+        return {"success": answer["outcome"] == "playing", "simulated": simulated, **answer}

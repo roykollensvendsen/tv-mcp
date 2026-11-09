@@ -12,14 +12,17 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from tv_mcp.driver import ShowsYouTube
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
+from tv_mcp.video import Video, is_video_id
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
     from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, TvInfo
     from tv_mcp.media import MediaItem, MediaLibrary, Session
+    from tv_mcp.video import Lounge, VideoSearch
 
 LEFT_ALONE = "left alone"
 ANOTHER_TV = "another TV answers there"
@@ -35,6 +38,11 @@ class Listen(Protocol):
 LOOK_AGAIN = 3
 #: For how many seconds after a seek the TV's own report of the position is not believed.
 FRESH = 20.0
+
+#: What the voice says when YouTube is not switched on.
+NO_YOUTUBE = "YouTube is not set up. Add 'youtube' to the features in the settings."
+#: How many videos a YouTube search reads out.
+YOUTUBE_RESULTS = 5
 
 #: How many of a film's cast a scene names, in the order the library bills them.
 CAST_LIMIT = 15
@@ -52,12 +60,18 @@ class TvService:
         library: MediaLibrary | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         clock: Callable[[], float] = time.monotonic,
+        videos: VideoSearch | None = None,
+        lounge: Lounge | None = None,
     ) -> None:
-        """Reach each TV through `drivers`, by key, find TVs with `listen`, and films in `library`."""
+        """Reach each TV through `drivers`, by key, find TVs with `listen`, and films in `library`.
+
+        `videos` and `lounge` are YouTube, when the owner switched it on.
+        """
         self.settings, self.drivers, self._listen, self.library = settings, drivers, listen, library
         self._sleep, self._clock = sleep, clock
         #: Where each TV was last sent, and when: the TV reports it late.
         self._moved: dict[str, tuple[float, float]] = {}
+        self.videos, self.lounge = videos, lounge
 
     async def _watching(self, tv: Tv) -> Session | None:
         """What plays on `tv`, asked again for a moment when it seems gone (a Chromecast after a seek)."""
@@ -135,8 +149,8 @@ class TvService:
         found = await self.library.search(term)
         return {"items": [_found(i) for i in found]}
 
-    def _target(self, name: str) -> Tv | dict[str, Any]:
-        """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""
+    def _tv(self, name: str) -> Tv | dict[str, Any]:
+        """The TV to act on, or a refusal: unknown, ambiguous, or left alone."""
         try:
             tv = find_tv(self.settings, name)
         except (UnknownTvError, AmbiguousTvError) as refusal:
@@ -144,6 +158,55 @@ class TvService:
         # RULE: a hands-off TV is never played on or controlled
         if tv.hands_off:
             return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
+        return tv
+
+    async def search_youtube(self, words: str) -> dict[str, Any]:
+        """Videos on YouTube matching `words`, as the voice reads them."""
+        if self.videos is None:
+            return {"items": [], "say": NO_YOUTUBE}
+        found = (await self.videos.search(words))[:YOUTUBE_RESULTS]
+        if not found:
+            return {"items": [], "say": f"Found nothing on YouTube for {words!r}."}
+        items = [_video(v) for v in found]
+        listed = "; ".join(
+            f"{i['title']}"
+            + (f" by {i['channel']}" if i["channel"] else "")
+            + (f", {i['length']}" if i["length"] else "")
+            for i in items
+        )
+        return {"items": items, "say": f"On YouTube: {listed}."}
+
+    async def play_youtube(self, words: str, name: str) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per reason
+        """Start the YouTube video `words` names (its id, or words for the best match) on `name`."""
+        if self.videos is None or self.lounge is None:
+            return _refused(NO_YOUTUBE)
+        tv = self._tv(name)
+        if not isinstance(tv, Tv):
+            return tv
+        driver = self.drivers.get(tv.driver)
+        if not isinstance(driver, ShowsYouTube):
+            return _refused(f"{_capital(tv.spoken)} cannot show YouTube from here.")
+        if wrong := await self._itself(tv):
+            return wrong
+        if is_video_id(words):
+            video = Video(id=words, title="the video", channel=None, duration=None)
+        else:
+            found = await self.videos.search(words)
+            if not found:
+                return _refused(f"Found nothing on YouTube for {words!r}.")
+            video = found[0]
+        screen = await driver.youtube_screen(tv.address or "")
+        if screen is None:
+            return _refused(f"YouTube did not open on {tv.spoken}.")
+        if not await self.lounge.play(tv.key, screen, video.id):
+            return _refused(f"YouTube opened on {tv.spoken}, but {video.title} did not start.")
+        return {"outcome": "playing", "say": f"Playing {video.title} on {tv.spoken}.", "video": _video(video)}
+
+    def _target(self, name: str) -> Tv | dict[str, Any]:
+        """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""
+        tv = self._tv(name)
+        if not isinstance(tv, Tv):
+            return tv
         if self.library is None:
             return _refused(NO_LIBRARY)
         return tv
@@ -438,3 +501,12 @@ def _clock(seconds: float) -> str:
     minutes, rest = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours}:{minutes:02}:{rest:02}" if hours else f"{minutes}:{rest:02}"
+
+
+def _video(video: Video) -> dict[str, Any]:
+    return {
+        "id": video.id,
+        "title": video.title,
+        "channel": video.channel,
+        "length": spoken_time(video.duration) if video.duration else None,
+    }

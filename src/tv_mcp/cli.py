@@ -14,6 +14,7 @@ from tv_mcp import discovery
 from tv_mcp.drivers.chromecast import Chromecast
 from tv_mcp.drivers.jellyfin import Jellyfin, cast_login
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
+from tv_mcp.drivers.youtube import DataApiSearch, FirstThatAnswers, PyYtLounge, YtDlpSearch
 from tv_mcp.service import TvService
 from tv_mcp.settings import load_settings, settings_path
 from tv_mcp.simulator import simulated_service
@@ -53,7 +54,13 @@ def _with_service(
                 if settings.jellyfin_url and settings.jellyfin_key
                 else None
             )
-            service = TvService(settings, drivers=drivers, listen=discovery.listen, library=library)
+            youtube: dict[str, Any] = {}
+            if "youtube" in (settings.features or ()):
+                api = DataApiSearch(settings.youtube_key, client) if settings.youtube_key else None
+                youtube = {"videos": FirstThatAnswers(YtDlpSearch(), api), "lounge": PyYtLounge(path.parent)}
+            service = TvService(
+                settings, drivers=drivers, listen=discovery.listen, library=library, **youtube
+            )
             return await work(service)
 
     return asyncio.run(run())

@@ -136,6 +136,10 @@ class Chromecast:
         login = await self._login(address)
         return login is not None and await self._send(address, play_message(login, item, start))
 
+    async def youtube_screen(self, address: str) -> str | None:
+        """Open YouTube on the Chromecast and give its screen id."""
+        return await asyncio.to_thread(_youtube_screen_blocking, address)
+
     async def cast_seek(self, address: str, seconds: float) -> bool:
         """Move what the receiver is playing to `seconds` from its start."""
         login = await self._login(address)
@@ -245,3 +249,45 @@ def _send_blocking(address: str, message: dict[str, Any]) -> bool:  # pragma: no
         _connections.pop(address, None)
         return False
     return True
+
+
+#: The YouTube app on a Chromecast, and the channel that gives its screen id.
+YOUTUBE_APP = "233637DE"
+YOUTUBE_NAMESPACE = "urn:x-cast:com.google.youtube.mdx"
+
+
+def _youtube_screen_blocking(address: str) -> str | None:  # pragma: no cover - a real device
+    """Launch YouTube on the Chromecast and ask it for its screen id."""
+    try:
+        import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415 - the optional chromecast extra
+        from pychromecast.controllers import BaseController  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
+    except ImportError:
+        return None
+    answered = threading.Event()
+    screen: list[str] = []
+
+    class YouTube(BaseController):  # type: ignore[misc,unused-ignore]
+        def __init__(self) -> None:
+            super().__init__(YOUTUBE_NAMESPACE, YOUTUBE_APP)
+
+        def receive_message(self, _message: object, data: object) -> bool:
+            if isinstance(data, dict) and (data.get("data") or {}).get("screenId"):
+                screen.append(str(data["data"]["screenId"]))
+                answered.set()
+            return True
+
+    try:
+        cast, _, _ = _connection(address)
+        youtube = YouTube()
+        cast.register_handler(youtube)
+        launched = threading.Event()
+        youtube.launch(callback_function=lambda *_: launched.set())
+        if not launched.wait(timeout=20):
+            return None
+        for _ in range(5):
+            youtube.send_message({"type": "getMdxSessionStatus"})
+            if answered.wait(timeout=3):
+                return screen[0]
+    except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
+        _connections.pop(address, None)
+    return None

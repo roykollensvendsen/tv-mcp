@@ -20,7 +20,7 @@ import httpx
 from tv_mcp.driver import TvInfo
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from tv_mcp.settings import Tv
 
@@ -59,6 +59,10 @@ def _send_wake(mac: str) -> None:  # pragma: no cover - sends to the network
 #: Tizen version by model year, from Samsung's release history.
 TIZEN_BY_YEAR = {2020: "5.5", 2021: "6.0", 2022: "6.5", 2023: "7.0", 2024: "8.0", 2025: "9.0"}
 TIMEOUT = 3.0
+#: Where a YouTube remote says it comes from; the TV's DIAL answers no one else.
+YOUTUBE_ORIGIN = "https://www.youtube.com"
+#: How many seconds to give YouTube to start and announce its screen.
+YOUTUBE_TRIES = 15
 
 
 def parse_info(payload: dict[str, Any]) -> TvInfo:
@@ -107,7 +111,7 @@ class SamsungTizen:
         "youtube": "111299001912",
     }
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - each is a seam a test replaces
         self,
         client: httpx.AsyncClient,
         *,
@@ -115,11 +119,12 @@ class SamsungTizen:
         token_folder: pathlib.Path | None = None,
         remote: Callable[[str, pathlib.Path], Remote] = _samsung_remote,
         wake: Callable[[str], None] = _send_wake,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """Use `client` for every request; pairing tokens are kept in `token_folder`."""
         self._client = client
         self._token_folder = token_folder or pathlib.Path("~/.config/tv-mcp").expanduser()
-        self._remote, self._wake = remote, wake
+        self._remote, self._wake, self._sleep = remote, wake, sleep
         # The TV's port 8002 answers with a certificate it signed itself.
         self._tls = tls_client or httpx.AsyncClient(verify=False)  # noqa: S501 - the TV's own certificate
 
@@ -140,6 +145,28 @@ class SamsungTizen:
         except httpx.HTTPError:
             return False
         return response.is_success
+
+    async def youtube_screen(self, address: str) -> str | None:
+        """Open YouTube on the TV and give the screen id its YouTube app announces over DIAL.
+
+        The app only says its screen id while it runs, and only to a caller
+        that names YouTube as where it comes from.
+        """
+        if not await self.open_app(address, self.apps["youtube"]):
+            return None
+        for _ in range(YOUTUBE_TRIES):
+            await self._sleep(1.0)
+            try:
+                response = await self._client.get(
+                    f"http://{address}:8080/ws/apps/YouTube",
+                    headers={"Origin": YOUTUBE_ORIGIN},
+                    timeout=TIMEOUT,
+                )
+            except httpx.HTTPError:
+                continue
+            if found := re.search(r"<screenId>([^<]+)</screenId>", response.text):
+                return found.group(1)
+        return None
 
     async def close_app(self, address: str, app_id: str) -> bool:
         """Close `app_id` on the TV; no pairing is needed for this.

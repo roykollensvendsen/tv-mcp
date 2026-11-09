@@ -23,6 +23,10 @@ tv-mcp = "tv_mcp.cli:main"
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.13", "mypy>=1.11"]
 # Casting films to a Chromecast (MIT; it brings zeroconf, LGPL-2.1-or-later).
 chromecast = ["pychromecast==14.1.1"]
+youtube = [
+    "pyytlounge==3.6.0",
+    "yt-dlp==2026.10.26",
+]
 
 # One source for the version: the Git tag. A literal here would drift from it.
 [tool.hatch.version]

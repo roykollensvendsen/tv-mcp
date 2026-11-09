@@ -15,7 +15,7 @@ something come with the slices that need them, each with its own safety rule.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -101,4 +101,13 @@ class Switches(Protocol):
 
     async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Switch `tv` on or off; False when it did not answer."""
+        ...
+
+
+@runtime_checkable
+class ShowsYouTube(Protocol):
+    """A driver whose TVs can show YouTube."""
+
+    async def youtube_screen(self, address: str) -> str | None:
+        """Open YouTube on the TV and give its screen id, or None when it did not open."""
         ...

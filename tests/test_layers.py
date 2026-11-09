@@ -16,6 +16,7 @@ CORE = {
     "settings",
     "driver",
     "media",
+    "video",
     "service",
     "power",
     "conformance",
