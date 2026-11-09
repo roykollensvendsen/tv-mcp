@@ -34,6 +34,10 @@ class TvInfo:
     power: str  # "on", "standby" or "unknown"
     art_mode_capable: bool = False
     developer_mode: bool = False
+    #: The TV's own lasting id, which tells two TVs of one model apart.
+    device_id: str | None = None
+    brand: str | None = None
+    product_line: str | None = None  # for example "The Frame"
 
 
 class Driver(Protocol):

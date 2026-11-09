@@ -75,6 +75,9 @@ def parse_info(payload: dict[str, Any]) -> TvInfo:
         power=str(device.get("PowerState", "unknown")),
         art_mode_capable=device.get("FrameTVSupport") == "true",
         developer_mode=device.get("developerMode") == "1",
+        device_id=device.get("id") or None,
+        brand="Samsung",
+        product_line="The Frame" if device.get("FrameTVSupport") == "true" else None,
     )
 
 

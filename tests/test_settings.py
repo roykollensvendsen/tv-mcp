@@ -106,3 +106,60 @@ def test_the_command_line_can_point_at_a_settings_file(tmp_path, capsys):
     path.write_text('[tvs.den]\nnames = ["the den"]\nhands_off = true\n')
     assert main(["status", "--settings", str(path)]) == 0
     assert capsys.readouterr().out == "the den: left alone\n"
+
+
+NAMED = """
+[tvs.downstairs]
+location = "down"
+names = ["the den"]
+description = "The Frame in the living room downstairs"
+model = "QE55LS03BAUXXC"
+device_name = "Samsung The Frame 55"
+
+[tvs.upstairs]
+location = "up"
+description = "The Q68CA in the bedroom upstairs"
+model = "TQ55Q68CAUXXC"
+"""
+
+
+@pytest.fixture
+def named(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(NAMED)
+    return load_settings(path)
+
+
+def test_a_tv_is_called_by_where_it_stands_and_has_a_description(named):
+    down = find_tv(named, "down")
+    assert down.spoken == "down"
+    assert down.description == "The Frame in the living room downstairs"
+    assert find_tv(named, "TV down") is down
+    assert find_tv(named, "TV-en down") is down
+    assert find_tv(named, "the den") is down
+
+
+def test_a_tv_is_found_by_its_model_and_its_own_device_name(named):
+    assert find_tv(named, "qe55ls03bauxxc").key == "downstairs"
+    assert find_tv(named, "Samsung The Frame 55").key == "downstairs"
+    assert find_tv(named, "TQ55Q68CAUXXC").key == "upstairs"
+    assert find_tv(named, "Q68CA").key == "upstairs"
+
+
+def test_a_brand_two_tvs_share_is_refused_rather_than_guessed(named):
+    assert find_tv(named, "TV up").brand == "Samsung"
+    with pytest.raises(AmbiguousTvError, match="down and up"):
+        find_tv(named, "Samsung")
+
+
+def test_two_tvs_of_the_same_model_are_told_apart_by_where_they_stand(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[tvs.a]\nlocation = "kitchen"\nmodel = "QE55LS03BAUXXC"\ndevice_id = "uuid:a"\n'
+        '[tvs.b]\nlocation = "office"\nmodel = "QE55LS03BAUXXC"\ndevice_id = "uuid:b"\n'
+    )
+    twins = load_settings(path)
+    assert find_tv(twins, "kitchen").device_id == "uuid:a"
+    assert find_tv(twins, "office").device_id == "uuid:b"
+    with pytest.raises(AmbiguousTvError):
+        find_tv(twins, "QE55LS03BAUXXC")

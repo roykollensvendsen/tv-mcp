@@ -111,18 +111,28 @@ the menu names in English and Norwegian, the steps that differ from the
 defaults, and what has been tested on a real TV, with the date. A step with no
 model file falls back to the general instructions and says so.
 
-A TV is named the way the owner says it, usually by room ("the living room",
-"the bedroom") or by its name ("The Frame"). Each TV has one entry in the
-local settings file, `~/.config/tv-mcp/config.toml`, holding its friendly name,
-any other names it answers to, and its address, hardware address and pairing
-token. The repository holds only an example with documentation addresses:
+A TV is called by where it stands ("the living room", "upstairs"), and may
+carry a free-text description the voice can read to pick the right one. It is
+also found by what the TV reports about itself: its maker, its model code or a
+part of it ("LS03B"), and the name it gives itself. Each TV has one entry in
+the local settings file, `~/.config/tv-mcp/config.toml`, which also holds its
+address, hardware address and the TV's own lasting id. The repository holds
+only an example with documentation addresses:
 
 ```toml
 [tvs.living-room]
-names = ["the living room", "The Frame"]
+location = "the living room"
+description = "The Frame by the window"
+names = ["The Frame"]
 address = "192.0.2.10"
 mac = "00:00:5E:00:53:01"
+model = "QE55LS03BAUXXC"
+device_id = "uuid:..."
 ```
+
+Two TVs of one model are told apart by where they stand, and by their ids: a
+TV that answers at an address with another id than the one set up is reported
+and never acted on, because the router may have handed the addresses round.
 
 `tv_setup` writes the entry when a TV is set up and asks the owner what to
 call it. A name that matches two TVs is refused rather than guessed. Every

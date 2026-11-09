@@ -4,7 +4,7 @@
 import asyncio
 
 from tv_mcp.drivers.samsung_tizen import parse_info
-from tv_mcp.service import TvService
+from tv_mcp.service import ANOTHER_TV, TvService
 from tv_mcp.settings import Settings, Tv
 
 FRAME = {
@@ -14,6 +14,7 @@ FRAME = {
         "model": "22_PONTUSM_FTV",
         "PowerState": "on",
         "FrameTVSupport": "true",
+        "id": "uuid:frame-1",
     }
 }
 OTHER = {
@@ -112,3 +113,44 @@ def test_an_address_announced_twice_is_read_once():
     network = FakeNetwork({"192.0.2.10": FRAME}, announced=["192.0.2.10", "192.0.2.10"])
     asyncio.run(_service(network, LIVING).discover(full=False))
     assert network.asked == ["192.0.2.10"]
+
+
+def test_status_gives_each_tvs_name_description_brand_and_model():
+    down = Tv(key="down", names=(), location="down", address="192.0.2.10", description="The Frame downstairs")
+    up = Tv(
+        key="up",
+        names=(),
+        location="up",
+        address="192.0.2.11",
+        hands_off=True,
+        description="The Q68CA upstairs",
+        model="TQ55Q68CAUXXC",
+    )
+    network = FakeNetwork({"192.0.2.10": FRAME, "192.0.2.11": OTHER})
+    first, second = asyncio.run(_service(network, down, up).status(None))
+    assert first["tv"] == "down"
+    assert first["description"] == "The Frame downstairs"
+    assert (first["brand"], first["product_line"], first["model"], first["device_name"]) == (
+        "Samsung",
+        "The Frame",
+        "QE55LS03BAUXXC",
+        "Samsung The Frame 55",
+    )
+    assert second["tv"] == "up"
+    assert (second["description"], second["brand"], second["model"]) == (
+        "The Q68CA upstairs",
+        "Samsung",
+        "TQ55Q68CAUXXC",
+    )
+    assert network.asked == ["192.0.2.10"]
+
+
+def test_a_tv_that_answers_as_another_device_is_not_acted_on():
+    # Two TVs of the same model; the addresses were swapped, say by the router.
+    twin = {"device": {**FRAME["device"], "id": "uuid:frame-2"}}
+    kitchen = Tv(key="kitchen", names=(), location="kitchen", address="192.0.2.10", device_id="uuid:frame-1")
+    office = Tv(key="office", names=(), location="office", address="192.0.2.12", device_id="uuid:frame-2")
+    network = FakeNetwork({"192.0.2.10": twin, "192.0.2.12": FRAME})
+    first, second = asyncio.run(_service(network, kitchen, office).status(None))
+    assert first["state"] == second["state"] == ANOTHER_TV
+    assert "kitchen" in first["say"]

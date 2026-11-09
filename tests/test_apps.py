@@ -174,3 +174,19 @@ def test_an_app_named_with_tv_after_it_is_found():
     answer = asyncio.run(_service(driver).open_app("NRK TV", "The Frame"))
     assert answer["outcome"] == "done", answer
     assert driver.opened == [("192.0.2.10", "3202012022410")]
+
+
+def test_an_app_is_not_opened_on_a_tv_that_answers_as_another_device():
+    from tv_mcp.driver import TvInfo  # noqa: PLC0415
+
+    driver = OpeningDriver()
+
+    async def other(address):
+        return TvInfo(name=None, model=None, year=None, platform=None, power="on", device_id="uuid:other")
+
+    driver.read_info = other
+    kitchen = Tv(key="kitchen", names=(), location="kitchen", address="192.0.2.10", device_id="uuid:mine")
+    answer = asyncio.run(_service(driver, kitchen).open_app("YouTube", "kitchen"))
+    assert answer["outcome"] == "refused"
+    assert "Another TV" in answer["say"]
+    assert driver.opened == []

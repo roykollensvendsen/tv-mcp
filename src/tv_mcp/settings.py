@@ -9,8 +9,12 @@ path in ``TV_MCP_SETTINGS``), because it holds addresses, tokens and keys:
     # the API key: in a file of its own, ``jellyfin-key`` beside this one, or here as api_key
 
     [tvs.living-room]
-    names = ["the living room", "The Frame"]
+    location = "the living room"   # what the TV is called and answers to
+    description = "The Frame by the window"   # free text the voice can read
+    names = ["The Frame"]          # other names it answers to, if any
     address = "192.0.2.10"
+    model = "QE55LS03BAUXXC"       # as the TV reports it; also found by "LS03B"
+    device_id = "uuid:..."         # the TV's own id, so a TV that answers as another is not used
     mac = "00:00:5E:00:53:01"
     hands_off = false        # true: no tool sends this TV anything
     driver = "samsung-tizen"  # the brand or platform; this is the default
@@ -47,11 +51,39 @@ class Tv:
     mac: str | None = None
     hands_off: bool = False
     driver: str = "samsung-tizen"
+    location: str | None = None
+    description: str | None = None
+    model: str | None = None
+    device_id: str | None = None
+    device_name: str | None = None  # the name the TV gives itself
 
     @property
     def spoken(self) -> str:
-        """The name to say back: the first one the owner gave, or the key."""
-        return self.names[0] if self.names else self.key
+        """The name to say back: where it stands, else the first name the owner gave, else the key."""
+        return self.location or (self.names[0] if self.names else self.key)
+
+    @property
+    def brand(self) -> str | None:
+        """The maker, from the driver the TV uses."""
+        return BRANDS.get(self.driver)
+
+    def answers_to(self) -> set[str]:
+        """Every name this TV is found by, as names compare."""
+        said = [self.key, *self.names, self.model or "", self.device_name or "", self.brand or ""]
+        if self.location:
+            said += [self.location, f"tv {self.location}", f"tv-en {self.location}"]
+        return {_plain(n) for n in said if n}
+
+    def has_model(self, wanted: str) -> bool:
+        """Whether `wanted` is the model code or a part of it, such as "Q68CA" in "TQ55Q68CAUXXC"."""
+        part = wanted.replace(" ", "")
+        return bool(self.model) and len(part) >= MODEL_PART and part in _plain(self.model or "")
+
+
+#: The makers behind each driver.
+BRANDS = {"samsung-tizen": "Samsung"}
+#: The shortest part of a model code a TV is found by.
+MODEL_PART = 4
 
 
 @dataclass(frozen=True)
@@ -109,6 +141,11 @@ def _tv(key: str, table: dict[str, Any]) -> Tv:
         mac=table.get("mac"),
         hands_off=bool(table.get("hands_off", False)),
         driver=str(table.get("driver", "samsung-tizen")),
+        location=table.get("location"),
+        description=table.get("description"),
+        model=table.get("model"),
+        device_id=table.get("device_id"),
+        device_name=table.get("device_name"),
     )
 
 
@@ -123,7 +160,7 @@ def _plain(name: str) -> str:
 def find_tv(settings: Settings, name: str) -> Tv:
     """The one TV that answers to `name`; refuses rather than guesses."""
     wanted = _plain(name)
-    matches = [tv for tv in settings.tvs if wanted in {_plain(n) for n in (tv.key, *tv.names)}]
+    matches = [tv for tv in settings.tvs if wanted in tv.answers_to() or tv.has_model(wanted)]
     if not matches:
         known = ", ".join(tv.spoken for tv in settings.tvs) or "none set up yet"
         msg = f"No TV is called {name!r}. The TVs are: {known}."

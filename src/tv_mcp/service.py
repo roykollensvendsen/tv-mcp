@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from tv_mcp.media import MediaItem, MediaLibrary, Session
 
 LEFT_ALONE = "left alone"
+ANOTHER_TV = "another TV answers there"
 
 
 class Listen(Protocol):
@@ -47,11 +48,22 @@ class TvService:
     async def _read(self, tv: Tv) -> dict[str, Any]:
         # RULE: a hands-off TV is never contacted
         if tv.hands_off or tv.address is None:
-            return {"tv": tv.spoken, "state": LEFT_ALONE if tv.hands_off else "no address set"}
+            return {**_known(tv), "state": LEFT_ALONE if tv.hands_off else "no address set"}
         driver = self.drivers.get(tv.driver)
         if driver is None:
             return {"tv": tv.spoken, "state": "refused", "say": f"No driver {tv.driver!r} is switched on."}
-        return _report(tv, await driver.read_info(tv.address))
+        info = await driver.read_info(tv.address)
+        # RULE: a TV that answers as another device is not acted on
+        if info is not None and tv.device_id and info.device_id != tv.device_id:
+            return {"tv": tv.spoken, "state": ANOTHER_TV, "say": _another(tv)}
+        return _report(tv, info)
+
+    async def _itself(self, tv: Tv) -> dict[str, Any] | None:
+        """A refusal when another TV answers at `tv`'s address; None when it is `tv` or cannot tell."""
+        if not tv.device_id:
+            return None
+        report = await self._read(tv)
+        return _refused(_another(tv)) if report["state"] == ANOTHER_TV else None
 
     async def status(self, name: str | None) -> list[dict[str, Any]]:
         """One report per TV, or for the one named."""
@@ -130,6 +142,8 @@ class TvService:
         if isinstance(found, dict):
             return found
         tv, driver, app_id = found
+        if wrong := await self._itself(tv):
+            return wrong
         if not await cast("OpensApps", driver).open_app(tv.address or "", app_id):
             return _refused(f"{tv.spoken.capitalize()} did not open {app}. Is it on?")
         return {"outcome": "done", "say": f"Opened {app} on {tv.spoken}."}
@@ -140,6 +154,8 @@ class TvService:
         if isinstance(found, dict):
             return found
         tv, driver, app_id = found
+        if wrong := await self._itself(tv):
+            return wrong
         if not await cast("ClosesApps", driver).close_app(tv.address or "", app_id):
             return _refused(f"{tv.spoken} did not close {app}.")
         return {"outcome": "done", "say": f"Closed {app} on {tv.spoken}."}
@@ -163,6 +179,8 @@ class TvService:
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
+        if wrong := await self._itself(tv):
+            return wrong
         session = await self._session(tv)
         if session is None or self.library is None:
             return _refused(f"Jellyfin is not open on {tv.spoken}.")
@@ -175,6 +193,8 @@ class TvService:
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
+        if wrong := await self._itself(tv):
+            return wrong
         assert self.library is not None  # noqa: S101 - _target checked it
         found = await self.library.search(title)
         chosen = _choose(title, found)
@@ -218,17 +238,35 @@ def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
     return _refused(f"{title!r} could be: {options}. Which one?")
 
 
+def _another(tv: Tv) -> str:
+    return f"Another TV answers at the address set for {tv.spoken}, so nothing is sent to it."
+
+
+def _known(tv: Tv | None) -> dict[str, Any]:
+    """What the settings say about `tv`, without asking the TV."""
+    if tv is None:
+        return {"tv": None}
+    said = {"tv": tv.spoken, "description": tv.description, "brand": tv.brand, "model": tv.model}
+    return {k: v for k, v in said.items() if v is not None or k == "tv"}
+
+
 def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:
-    name = tv.spoken if tv else None
+    known = _known(tv)
     if info is None:
-        return {"tv": name, "state": "off or not reachable"}
+        return {**known, "state": "off or not reachable"}
     state = info.power
     if state == "standby" and info.art_mode_capable:
         state = "standby or art mode"
-    return {
-        "tv": name,
-        "state": state,
+    told = {
+        "brand": info.brand,
+        "product_line": info.product_line,
         "model": info.model,
+        "device_name": info.name,
+    }
+    return {
+        **known,
+        **{k: v for k, v in told.items() if v is not None},
+        "state": state,
         "year": info.year,
         "platform": info.platform,
         "developer_mode": info.developer_mode,
