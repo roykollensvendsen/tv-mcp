@@ -8,6 +8,7 @@ the network is passed in, so the tests need neither a TV nor a network.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -35,6 +36,8 @@ class Listen(Protocol):
 
 
 #: How many more times to look for a film that seems to have gone, a second apart.
+#: Parts of a title this short are not searched on their own.
+SHORTEST_PART = 2
 LOOK_AGAIN = 3
 #: For how many seconds after a seek the TV's own report of the position is not believed.
 FRESH = 20.0
@@ -87,6 +90,31 @@ class TvService:
             if attempt < again:
                 await self._sleep(1.0)
         return None
+
+    async def _in_jellyfin(self, driver: HasPlayer, tv: Tv) -> bool:
+        """Whether the TV says Jellyfin is the app in front."""
+        now = await driver.playing(tv.address) if tv.address else None
+        return now is not None and now.app == "Jellyfin"
+
+    async def _find(self, title: str) -> list[MediaItem]:
+        """Items matching `title`, also when it is said in other words than the library uses.
+
+        "Star Wars: A New Hope" finds "Star Wars: Episode IV - A New Hope": each
+        part of the title is searched, and an item is kept when its title has
+        every word that was said.
+        """
+        assert self.library is not None  # noqa: S101 - callers checked it
+        found = await self.library.search(title)
+        if found:
+            return found
+        said = set(_words(title))
+        seen: dict[str, MediaItem] = {}
+        for part in re.split(r"\s*[:\-\u2013]\s*", title):
+            if len(part) > SHORTEST_PART and part != title:
+                for item in await self.library.search(part):
+                    if said <= set(_words(item.title)):
+                        seen.setdefault(item.id, item)
+        return list(seen.values())
 
     async def _add_playing(self, tv: Tv, report: dict[str, Any], sessions: list[Session]) -> None:
         """Add to `report` what plays on `tv`: Jellyfin's film, or else whatever its app plays."""
@@ -201,7 +229,7 @@ class TvService:
         """Films and episodes matching `term`."""
         if self.library is None:
             return {"items": [], "say": NO_LIBRARY}
-        found = await self.library.search(term)
+        found = await self._find(term)
         return {"items": [_found(i) for i in found]}
 
     def _tv(self, name: str) -> Tv | dict[str, Any]:
@@ -455,6 +483,9 @@ class TvService:
         driver = self.drivers.get(tv.driver)
         if isinstance(driver, HasPlayer):
             watching = await self._watching(tv, again=0)
+            if watching is None and self._caster(tv) is None and await self._in_jellyfin(driver, tv):
+                # Jellyfin's report can lag a moment; the TV says Jellyfin is in front.
+                watching = await self._watching(tv)
             if watching is None or self._caster(tv) is not None:
                 return await self._any_app(driver, tv, "seek", seconds, relative=relative)
         else:
@@ -486,7 +517,7 @@ class TvService:
         if wrong := await self._itself(tv):
             return wrong
         assert self.library is not None  # noqa: S101 - _target checked it
-        found = await self.library.search(title)
+        found = await self._find(title)
         chosen = _choose(title, found)
         if not isinstance(chosen, str):
             return chosen
@@ -545,6 +576,10 @@ def _refused(say: str) -> dict[str, Any]:
 
 def _spoken(item: MediaItem) -> str:
     return f"{item.title} ({item.year})" if item.year else item.title
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"\w+", text.casefold())
 
 
 def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
