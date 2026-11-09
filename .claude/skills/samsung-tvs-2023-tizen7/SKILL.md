@@ -44,6 +44,14 @@ The shared rules and the setup steps are in the parent,
 
 ## Not yet known
 
+- **Why it refuses to close apps.** The Q68CA differs from the Frame in two
+  ways, Tizen 7.0 against 6.5 and developer mode off against on, and either
+  could be why. samsungtvws closes with the same call tv-mcp uses (`DELETE
+  /api/v2/applications/<id>`), and no source found says that call needs
+  developer mode or a token (searched 2026-11-09). The app status call
+  answers the same on both TVs. The test that would tell: close an app with
+  developer mode on, which only the owner may switch.
+
 - Whether developer mode opens from App Settings as on the 2022 Frame (not
   needed for Jellyfin; needed only for `sdb`, for example to read app ids).
 - The Norwegian names of *Power On with Mobile* and *IP Remote* on Tizen 7.
