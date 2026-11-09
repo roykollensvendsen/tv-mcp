@@ -16,7 +16,7 @@ from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from tv_mcp.driver import ClosesApps, Driver, OpensApps, TvInfo
+    from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, TvInfo
     from tv_mcp.media import MediaItem, MediaLibrary, Session
 
 LEFT_ALONE = "left alone"
@@ -114,6 +114,18 @@ class TvService:
             return _refused(NO_LIBRARY)
         return tv
 
+    def _caster(self, tv: Tv) -> Casts | None:
+        """The driver, when its device plays films itself (a Chromecast)."""
+        driver = self.drivers.get(tv.driver)
+        return cast("Casts", driver) if callable(getattr(driver, "cast", None)) else None
+
+    async def _cast(self, caster: Casts, tv: Tv, item: MediaItem) -> dict[str, Any]:
+        """Cast `item` to `tv`, from where it was stopped."""
+        if not await caster.cast(tv.address or "", item.id, item.position or 0.0):
+            return _refused(f"I could not cast to {tv.spoken}. Is the Chromecast on?")
+        where = f" from {spoken_time(item.position)}" if item.position else ""
+        return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}{where}."}
+
     async def _session(self, tv: Tv) -> Session | None:
         assert self.library is not None  # noqa: S101 - _target checked it
         return next(
@@ -188,10 +200,17 @@ class TvService:
             return tv
         if wrong := await self._itself(tv):
             return wrong
-        session = await self._session(tv)
-        if session is None or self.library is None:
-            return _refused(f"Jellyfin is not open on {tv.spoken}.")
-        await self.library.control(session.id, command)
+        caster = self._caster(tv)
+        if caster is not None:
+            sent = await caster.cast_control(tv.address or "", command)
+        else:
+            session = await self._session(tv)
+            if session is None or self.library is None:
+                return _refused(f"Jellyfin is not open on {tv.spoken}.")
+            await self.library.control(session.id, command)
+            sent = True
+        if not sent:
+            return _refused(f"{_capital(tv.spoken)} did not answer.")
         done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
         return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
 
@@ -207,6 +226,9 @@ class TvService:
         chosen = _choose(title, found)
         if not isinstance(chosen, str):
             return chosen
+        caster = self._caster(tv)
+        if caster is not None:
+            return await self._cast(caster, tv, next(i for i in found if i.id == chosen))
         session = await self._session(tv) or await self._open_jellyfin(tv)
         if session is None:
             return _refused(
@@ -245,6 +267,10 @@ def _playing(session: Session) -> dict[str, Any]:
         playing["left"] = spoken_time(max(session.runtime - session.position, 0))
     playing["paused"] = session.paused
     return playing
+
+
+def _capital(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 def _refused(say: str) -> dict[str, Any]:
@@ -286,6 +312,8 @@ def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:
     if info is None:
         return {**known, "state": "off or not reachable"}
     state = info.power
+    if state == "unknown":
+        state = "reachable"  # it answers, but cannot tell whether its screen is on
     if state == "standby" and info.art_mode_capable:
         state = "standby or art mode"
     told = {

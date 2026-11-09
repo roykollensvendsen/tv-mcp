@@ -144,3 +144,29 @@ def test_play_can_start_from_a_position():
     seen = []
     _run(_server(seen), lambda j: j.play("s1", "a1", start=72 * 60))
     assert seen[-1].url.params["startPositionTicks"] == str(72 * 60 * TICKS)
+
+
+def test_a_cast_login_uses_the_users_own_token_and_an_address_the_chromecast_can_reach():
+    from tv_mcp.drivers.jellyfin import cast_login  # noqa: PLC0415
+
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers["Authorization"])
+        if request.url.path == "/Users/Me":
+            return httpx.Response(200, json={"Id": "u1"})
+        return httpx.Response(200, json={"Id": "srv", "Version": "12.4.0"})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await cast_login(
+                "http://192.0.2.9:8096",
+                "user-token",
+                client,
+                "192.0.2.20",
+                local_address=lambda _a: "192.0.2.5",
+            )
+
+    login = asyncio.run(run())
+    assert (login.server, login.user_id, login.server_id) == ("http://192.0.2.5:8096", "u1", "srv")
+    assert all('Token="user-token"' in h for h in seen)

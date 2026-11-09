@@ -39,6 +39,8 @@ DEFAULT_PATH = "~/.config/tv-mcp/config.toml"
 #: The Jellyfin API key's own file, beside the settings file, so it can be
 #: pasted into an editor without touching the settings.
 KEY_FILE = "jellyfin-key"
+#: A user's own login, for a Chromecast to fetch films as that user (Quick Connect gives one).
+USER_TOKEN_FILE = "jellyfin-user-token"  # noqa: S105 - a file name, not a token
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class Settings:
     tvs: tuple[Tv, ...] = ()
     jellyfin_url: str | None = None
     jellyfin_key: str | None = None
+    jellyfin_user_token: str | None = None
     #: The features switched on; None means the default set (tv_mcp.tools).
     features: tuple[str, ...] | None = None
 
@@ -123,12 +126,13 @@ def load_settings(path: pathlib.Path) -> Settings:
         tvs=tvs,
         jellyfin_url=jellyfin.get("url"),
         jellyfin_key=jellyfin.get("api_key") or _key_file(path),
+        jellyfin_user_token=_key_file(path, USER_TOKEN_FILE),
         features=tuple(enabled) if enabled is not None else None,
     )
 
 
-def _key_file(settings: pathlib.Path) -> str | None:
-    file = settings.with_name(KEY_FILE)
+def _key_file(settings: pathlib.Path, name: str = KEY_FILE) -> str | None:
+    file = settings.with_name(name)
     key = file.read_text().strip() if file.is_file() else ""
     return key or None
 

@@ -155,6 +155,33 @@ No helper app is needed for the rest:
 Should a model need a helper app after all, it goes in that model's data file
 with why it is needed, and `tv_setup` asks the owner before installing it.
 
+## TVs that cannot run Jellyfin: a Chromecast
+
+A TV too old for the Jellyfin app (the garage's 2012 Samsung) gets its films
+through a Chromecast plugged into it, with the `chromecast` driver. `tv_play`
+casts through Jellyfin's own receiver app, from where the film was stopped;
+`tv_control` sends pause, resume and stop to the receiver. The receiver
+fetches films as a user, so it needs that user's own login (from Quick
+Connect, kept beside the settings), not the server's key. No tool is added.
+How it was found to work is in the `chromecast` skill.
+
+## Music, planned
+
+Music comes from Jellyfin too (podcasts and audiobooks stay in Audiobookshelf).
+Planned, not built:
+
+- `tv_search` also finds artists, albums, songs and playlists (`MusicArtist`,
+  `MusicAlbum`, `Audio`, `Playlist`), each with its kind, so the voice can say
+  "the album Rumours by Fleetwood Mac".
+- `tv_play` plays any of them: an album or playlist in order, an artist as a
+  shuffled mix of their songs (`/Items` with `artistIds`, or Jellyfin's
+  instant mix). On a TV that goes through `PlayNow` with the item ids, on a
+  Chromecast through the receiver's `PlayNow` with the same ids.
+- `tv_control` gains next and previous track; `tv_status` says the song and
+  artist playing.
+- A title that matches a film and an album is refused with both named, as two
+  films are today.
+
 ## Safety
 
 1. Switching a TV on or off on its own waits for a spoken yes:

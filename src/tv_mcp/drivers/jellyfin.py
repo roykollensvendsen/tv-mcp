@@ -9,11 +9,14 @@ Dashboard → API Keys, read from the settings file.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from tv_mcp.media import MediaItem, Session
+from tv_mcp.media import CastLogin, MediaItem, Session
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 TIMEOUT = 5.0
 SEARCH_LIMIT = 5
@@ -133,3 +136,38 @@ def _item(page: dict[str, Any]) -> MediaItem:
         runtime=_seconds(page.get("RunTimeTicks")),
         last_played=str(last)[:10] if last else None,
     )
+
+
+def _local_address(towards: str) -> str:  # pragma: no cover - asks the operating system
+    """The address this computer has on the network that leads to `towards`; nothing is sent."""
+    import socket  # noqa: PLC0415
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect((towards, 9))
+        return str(probe.getsockname()[0])
+
+
+async def cast_login(
+    url: str,
+    token: str,
+    client: httpx.AsyncClient,
+    cast_address: str,
+    *,
+    local_address: Callable[[str], str] = _local_address,
+) -> CastLogin | None:
+    """The login a cast device at `cast_address` needs, as the user who owns `token`.
+
+    The server is named by this computer's address on the cast device's network,
+    since "localhost" in the settings would mean the device itself.
+    """
+    headers = {"Authorization": f'MediaBrowser Token="{token}"'}
+    try:
+        me = (await client.get(f"{url.rstrip('/')}/Users/Me", headers=headers, timeout=TIMEOUT)).json()
+        info = (await client.get(f"{url.rstrip('/')}/System/Info", headers=headers, timeout=TIMEOUT)).json()
+        port = httpx.URL(url).port or 8096
+        server = f"http://{local_address(cast_address)}:{port}"
+        return CastLogin(
+            server=server, token=token, user_id=me["Id"], server_id=info["Id"], version=info.get("Version")
+        )
+    except (httpx.HTTPError, ValueError, KeyError, OSError):
+        return None

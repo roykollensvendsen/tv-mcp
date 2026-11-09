@@ -163,3 +163,9 @@ def test_two_tvs_of_the_same_model_are_told_apart_by_where_they_stand(tmp_path):
     assert find_tv(twins, "office").device_id == "uuid:b"
     with pytest.raises(AmbiguousTvError):
         find_tv(twins, "QE55LS03BAUXXC")
+
+
+def test_the_users_own_jellyfin_token_is_read_from_its_file_beside_the_settings(tmp_path):
+    (tmp_path / "config.toml").write_text('[jellyfin]\nurl = "http://192.0.2.5:8096"\n')
+    (tmp_path / "jellyfin-user-token").write_text("user-token\n")
+    assert load_settings(tmp_path / "config.toml").jellyfin_user_token == "user-token"  # noqa: S105 - an example

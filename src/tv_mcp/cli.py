@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from tv_mcp import discovery
-from tv_mcp.drivers.jellyfin import Jellyfin
+from tv_mcp.drivers.chromecast import Chromecast
+from tv_mcp.drivers.jellyfin import Jellyfin, cast_login
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
 from tv_mcp.service import TvService
 from tv_mcp.settings import load_settings, settings_path
@@ -19,6 +20,8 @@ from tv_mcp.simulator import simulated_service
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from tv_mcp.media import CastLogin
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
@@ -35,7 +38,16 @@ def _with_service(
         if simulate:
             return await work(simulated_service())
         async with httpx.AsyncClient() as client:
-            drivers = {driver.key: driver for driver in (SamsungTizen(client, token_folder=path.parent),)}
+
+            async def login(cast_address: str) -> CastLogin | None:
+                if not (settings.jellyfin_url and settings.jellyfin_user_token):
+                    return None
+                return await cast_login(
+                    settings.jellyfin_url, settings.jellyfin_user_token, client, cast_address
+                )
+
+            known = (SamsungTizen(client, token_folder=path.parent), Chromecast(client, login=login))
+            drivers = {driver.key: driver for driver in known}
             library = (
                 Jellyfin(settings.jellyfin_url, settings.jellyfin_key, client)
                 if settings.jellyfin_url and settings.jellyfin_key

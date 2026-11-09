@@ -39,6 +39,17 @@ class Session:
     paused: bool = False
 
 
+@dataclass(frozen=True)
+class CastLogin:
+    """What a cast device needs to fetch films from the library as one of its users."""
+
+    server: str  # an address the device itself can reach
+    token: str  # a user's own login, not the server's key
+    user_id: str
+    server_id: str
+    version: str | None = None
+
+
 class MediaLibrary(Protocol):
     """A library of films and episodes that can start one on a connected app."""
 

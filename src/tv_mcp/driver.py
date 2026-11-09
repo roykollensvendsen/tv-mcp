@@ -79,6 +79,18 @@ class OpensApps(Protocol):
         ...
 
 
+class Casts(Protocol):
+    """A driver whose device plays library items itself, as a Chromecast does."""
+
+    async def cast(self, address: str, item_id: str, start: float) -> bool:
+        """Start `item_id`, `start` seconds in; False when it did not."""
+        ...
+
+    async def cast_control(self, address: str, command: str) -> bool:
+        """Pause, resume or stop it (tv_mcp.media.COMMANDS); False when it did not."""
+        ...
+
+
 class Switches(Protocol):
     """A driver that can switch its TV on or off."""
 
