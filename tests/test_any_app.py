@@ -180,3 +180,29 @@ def test_status_names_the_app_in_front_and_never_says_none_when_the_tv_gives_no_
     line = tv_lines([{**report, "volume": 6}])
     assert line == "Stua oppe is on, NRK TV is open, volume 6."
     assert "None" not in line
+
+
+def test_a_jump_to_a_time_in_jellyfin_waits_for_its_report_instead_of_asking_the_app():
+    # 2026-11-09: "Jellyfin on stua nede cannot seek" for 1 h 7 min, while skips worked just after.
+    from tv_mcp.media import Session  # noqa: PLC0415
+
+    quiet = Session(id="s1", address="192.0.2.10", client="Jellyfin for Tizen", controllable=True)
+    playing = Session(**{**quiet.__dict__, "now_playing": "A New Hope", "position": 600.0, "runtime": 7500.0})
+
+    class Library:
+        def __init__(self):
+            self.reports, self.seeks = [[quiet], [playing]], []
+
+        async def sessions(self):
+            return self.reports.pop(0) if len(self.reports) > 1 else self.reports[0]
+
+        async def seek(self, session_id, seconds):
+            self.seeks.append((session_id, seconds))
+
+    driver, library = Player(Playing(app="Jellyfin")), Library()
+    service = _service(driver)
+    service.library = library
+    answer = asyncio.run(service.seek("the living room", 4020, relative=False))
+    assert answer["outcome"] == "done", answer
+    assert library.seeks == [("s1", 4020)]
+    assert driver.sent == []

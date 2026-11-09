@@ -302,3 +302,14 @@ def test_seek_needs_something_playing():
     answer = asyncio.run(_service(library).seek("The Frame", 60, relative=True))
     assert answer["outcome"] == "refused"
     assert library.seeks == []
+
+
+def test_a_title_said_without_its_episode_number_still_finds_the_film():
+    # 2026-11-09: "Star Wars: A New Hope" found nothing; the library calls it Episode IV.
+    class Strict(FakeLibrary):
+        async def search(self, term):
+            return [i for i in self.items if term.casefold() in i.title.casefold()]
+
+    library = Strict([HOPE, ROGUE, EMPIRE], [FRAME_SESSION])
+    answer = _play(library, "Star Wars: A New Hope")
+    assert library.played == [("s1", "a1")], answer
