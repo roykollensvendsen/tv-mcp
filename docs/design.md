@@ -183,6 +183,40 @@ Planned, not built:
 - A title that matches a film and an album is refused with both named, as two
   films are today.
 
+## YouTube, planned
+
+The owner asks for a YouTube video by voice and it plays on any of the TVs.
+Researched 2026-11-09 from sources only; nothing below is tried yet.
+
+- **An opt-in `youtube` feature**, folded into the tools that exist:
+  `tv_search` and `tv_play` take a source, "jellyfin" by default, so the
+  default set stays at four tools.
+- **Search with yt-dlp** (Unlicense), `ytsearch8:` with flat extraction in a
+  worker thread: title, channel and length come from the search page itself,
+  with no call per video. Live videos and Shorts are left out. The answer is
+  a short list read aloud, as for films.
+- **The YouTube Data API is the fallback**, used when the owner puts a key in
+  a secret file beside the config or yt-dlp fails. It is the only route
+  YouTube's terms clearly allow, but gives 100 searches a day and needs a
+  second call for each list's lengths.
+- **Play on all three TVs through YouTube's own "Lounge" remote protocol**,
+  the one the phone app uses to cast to a TV's YouTube app, with pyytlounge
+  (MIT, async). Each TV is paired once, from the screen id its YouTube app
+  gives over DIAL, or from the TV code in YouTube's settings, and the pairing
+  is kept in a secret file. On the Chromecast the YouTube app is opened
+  first. This is what works today in Home Assistant, developed on a Samsung.
+- **Not used:** PyChromecast's YouTube controller (its pairing fails and the
+  fix was not merged), and DIAL `v=<id>` on Tizen (the app opens and ignores
+  the id). When Lounge fails, tv-mcp opens YouTube and says the video could
+  not be started, rather than guessing.
+- **Risks, said to the owner:** the Lounge protocol and yt-dlp are not
+  official, so YouTube can break them and its terms do not allow them; the
+  risk for one home is small but not none. Shorts and YouTube Kids profiles
+  cannot be controlled.
+- **Built after seek, tried first on The Frame and the garage.** Pairing a
+  TV shows a prompt on it, so it waits for the owner's yes, and the Q68CA is
+  not touched unless the owner asks.
+
 ## Safety
 
 1. Switching a TV on or off on its own waits for a spoken yes:
