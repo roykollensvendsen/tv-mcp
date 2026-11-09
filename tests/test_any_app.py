@@ -147,3 +147,26 @@ def test_a_samsung_says_which_app_is_in_front():
             return await SamsungTizen(client, tls_client=tls).playing("192.0.2.10")
 
     assert asyncio.run(run()) == Playing(app="YouTube")
+
+
+def test_one_app_that_does_not_answer_does_not_hide_the_app_in_front():
+    import httpx  # noqa: PLC0415
+
+    from tv_mcp.drivers.samsung_tizen import SamsungTizen  # noqa: PLC0415
+
+    def handler(request):
+        if request.url.path.endswith("/AprZAARz4r.Jellyfin"):
+            slow = "the TV took too long"
+            raise httpx.ReadTimeout(slow, request=request)
+        visible = request.url.path.endswith("/3201907018807")
+        return httpx.Response(200, json={"running": visible, "visible": visible})
+
+    async def run():
+        transport = httpx.MockTransport(handler)
+        async with (
+            httpx.AsyncClient(transport=transport) as client,
+            httpx.AsyncClient(transport=transport) as tls,
+        ):
+            return await SamsungTizen(client, tls_client=tls).playing("192.0.2.10")
+
+    assert asyncio.run(run()) == Playing(app="Netflix")

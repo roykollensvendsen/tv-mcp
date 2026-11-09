@@ -228,7 +228,7 @@ class SamsungTizen:
                 if state.is_success and state.json().get("visible") is True:
                     return name
             except (httpx.HTTPError, ValueError):
-                return None
+                continue  # one app not answering says nothing about the others
         return None
 
     async def playing(self, address: str) -> Playing | None:
