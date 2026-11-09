@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
 from tv_mcp.settings import AmbiguousTvError, UnknownTvError, find_tv
@@ -58,13 +58,19 @@ class PowerService:
 
     async def _state(self, tv: Tv) -> str | None:
         """'on', 'off', or None when it is not known."""
+        if tv.power_driver:
+            driver = self._service.drivers.get(tv.power_driver)
+            info = await driver.read_info(tv.power_address or "") if driver else None
+            if driver is None:
+                return None
+            return "on" if info is not None and info.power == "on" else "off"
         [report] = await self._service.status(tv.key)
         if report["state"] == "on":
             return "on"
         return "off" if report["state"] in _OFF else None
 
     def _switcher(self, tv: Tv) -> Switches | None:
-        driver = self._service.drivers.get(tv.driver)
+        driver = self._service.drivers.get(tv.power_driver or tv.driver)
         return cast("Switches", driver) if callable(getattr(driver, "switch", None)) else None
 
     async def request(self, state: str, name: str) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per rule
@@ -106,6 +112,9 @@ class PowerService:
         if await self._state(pending.tv) == wanted:
             return _refused(f"{pending.tv.spoken.capitalize()} is already {wanted}; nothing was sent.")
         switcher = self._switcher(pending.tv)
-        if switcher is None or not await switcher.switch(pending.tv, on=pending.on):
+        target = (
+            replace(pending.tv, address=pending.tv.power_address) if pending.tv.power_driver else pending.tv
+        )
+        if switcher is None or not await switcher.switch(target, on=pending.on):
             return _refused(f"{pending.tv.spoken.capitalize()} did not answer.")
         return {"outcome": "done", "say": f"Switching {pending.tv.spoken} {wanted}."}

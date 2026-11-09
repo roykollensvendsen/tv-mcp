@@ -18,6 +18,7 @@ path in ``TV_MCP_SETTINGS``), because it holds addresses, tokens and keys:
     mac = "00:00:5E:00:53:01"
     hands_off = false        # true: no tool sends this TV anything
     driver = "samsung-tizen"  # the brand or platform; this is the default
+    power = { driver = "samsung-legacy", address = "192.0.2.11" }  # optional: switched through another device
 
     [features]
     enabled = ["status", "setup"]   # leave out for the default: status only
@@ -55,6 +56,10 @@ class Tv:
     mac: str | None = None
     hands_off: bool = False
     driver: str = "samsung-tizen"
+    #: What switches it on and off, when that is not `driver` at `address`
+    #: (a TV whose films go through a Chromecast in it).
+    power_driver: str | None = None
+    power_address: str | None = None
     location: str | None = None
     description: str | None = None
     model: str | None = None
@@ -149,6 +154,8 @@ def _tv(key: str, table: dict[str, Any]) -> Tv:
         mac=table.get("mac"),
         hands_off=bool(table.get("hands_off", False)),
         driver=str(table.get("driver", "samsung-tizen")),
+        power_driver=(table.get("power") or {}).get("driver"),
+        power_address=(table.get("power") or {}).get("address"),
         location=table.get("location"),
         description=table.get("description"),
         model=table.get("model"),

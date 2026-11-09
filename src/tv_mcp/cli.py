@@ -13,6 +13,7 @@ import httpx
 from tv_mcp import discovery
 from tv_mcp.drivers.chromecast import Chromecast
 from tv_mcp.drivers.jellyfin import Jellyfin, cast_login
+from tv_mcp.drivers.samsung_legacy import SamsungLegacy
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
 from tv_mcp.drivers.youtube import DataApiSearch, FirstThatAnswers, PyYtLounge, YtDlpSearch
 from tv_mcp.service import TvService
@@ -47,7 +48,11 @@ def _with_service(
                     settings.jellyfin_url, settings.jellyfin_user_token, client, cast_address
                 )
 
-            known = (SamsungTizen(client, token_folder=path.parent), Chromecast(client, login=login))
+            known = (
+                SamsungTizen(client, token_folder=path.parent),
+                Chromecast(client, login=login),
+                SamsungLegacy(),
+            )
             drivers = {driver.key: driver for driver in known}
             library = (
                 Jellyfin(settings.jellyfin_url, settings.jellyfin_key, client)
