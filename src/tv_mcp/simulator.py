@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from tv_mcp.driver import TvInfo
-from tv_mcp.media import Cue, MediaItem, Session
+from tv_mcp.media import Chapter, Cue, MediaItem, Session
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
 
@@ -92,6 +92,10 @@ class SimulatedLibrary:
     async def subtitles(self, item_id: str) -> list[Cue] | None:  # noqa: ARG002 - one film's lines for all
         """A couple of made-up lines."""
         return [Cue(60.0, 62.0, "Hello there."), Cue(90.0, 92.0, "General Kenobi.")]
+
+    async def chapters(self, item_id: str) -> list[Chapter]:  # noqa: ARG002 - one film's chapters for all
+        """Two made-up chapters."""
+        return [Chapter(0.0, "Opening"), Chapter(60.0, "The cantina")]
 
     async def cast(self, item_id: str) -> list[tuple[str, str]]:  # noqa: ARG002 - one cast for all
         """A made-up cast."""

@@ -8,10 +8,11 @@ the network is passed in, so the tests need neither a TV nor a network.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.media import COMMANDS, scene_lines, spoken_time
+from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
@@ -30,6 +31,11 @@ class Listen(Protocol):
     async def __call__(self, recognises: Callable[[bytes], bool], target: str | None) -> list[str]: ...  # noqa: D102
 
 
+#: How many more times to look for a film that seems to have gone, a second apart.
+LOOK_AGAIN = 3
+#: For how many seconds after a seek the TV's own report of the position is not believed.
+FRESH = 20.0
+
 #: How many of a film's cast a scene names, in the order the library bills them.
 CAST_LIMIT = 15
 
@@ -37,7 +43,7 @@ CAST_LIMIT = 15
 class TvService:
     """Status and discovery for the TVs in the settings."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the parts a home has, each optional
         self,
         settings: Settings,
         *,
@@ -45,10 +51,33 @@ class TvService:
         listen: Listen,
         library: MediaLibrary | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Reach each TV through `drivers`, by key, find TVs with `listen`, and films in `library`."""
         self.settings, self.drivers, self._listen, self.library = settings, drivers, listen, library
-        self._sleep = sleep
+        self._sleep, self._clock = sleep, clock
+        #: Where each TV was last sent, and when: the TV reports it late.
+        self._moved: dict[str, tuple[float, float]] = {}
+
+    async def _watching(self, tv: Tv) -> Session | None:
+        """What plays on `tv`, asked again for a moment when it seems gone (a Chromecast after a seek)."""
+        assert self.library is not None  # noqa: S101 - callers checked it
+        for attempt in range(LOOK_AGAIN + 1):
+            sessions = await self.library.sessions()
+            watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
+            if watching is not None:
+                return replace(watching, position=self._position(tv, watching))
+            if attempt < LOOK_AGAIN:
+                await self._sleep(1.0)
+        return None
+
+    def _position(self, tv: Tv, watching: Session) -> float | None:
+        """Where the film is: where it was just sent, if that was moments ago, or else what the TV says."""
+        moved = self._moved.get(tv.key)
+        if moved is None or self._clock() - moved[1] > FRESH:
+            return watching.position
+        target, when = moved
+        return target if watching.paused else target + (self._clock() - when)
 
     async def _read(self, tv: Tv) -> dict[str, Any]:
         # RULE: a hands-off TV is never contacted
@@ -84,7 +113,7 @@ class TvService:
         for tv, report in zip(tvs, reports, strict=True):
             watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
             if watching and not tv.hands_off:
-                report["playing"] = _playing(watching)
+                report["playing"] = _playing(replace(watching, position=self._position(tv, watching)))
         return reports
 
     async def discover(self, *, full: bool) -> dict[str, Any]:
@@ -219,24 +248,34 @@ class TvService:
         done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
         return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
 
-    async def scene(self, name: str, *, minutes: float) -> dict[str, Any]:
-        """The subtitle lines within `minutes` of where the film on `name` is, with its cast."""
+    async def scene(self, name: str, *, minutes: float, chapters: bool = False) -> dict[str, Any]:
+        """The subtitle lines within `minutes` of where the film on `name` is, with its cast.
+
+        With `chapters`, also the film's named chapters, or else an outline
+        from its subtitles, so a scene can be found and seeked to.
+        """
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
         if wrong := await self._itself(tv):
             return wrong
         assert self.library is not None  # noqa: S101 - _target checked it
-        watching = next(
-            (s for s in await self.library.sessions() if s.address == tv.address and s.item_id), None
-        )
+        watching = await self._watching(tv)
         if watching is None or watching.item_id is None:
             return _refused(f"Nothing is playing on {tv.spoken}.")
         cues = await self.library.subtitles(watching.item_id)
         if not cues:
             return _refused(f"{watching.now_playing} has no subtitles to go by.")
         position = watching.position or 0.0
+        found: dict[str, Any] = {}
+        if chapters:
+            listed = await self.library.chapters(watching.item_id)
+            if named(listed):
+                found["chapters"] = [f"{_clock(c.start)} {c.name}" for c in listed]
+            else:
+                found["outline"] = outline(cues)
         return {
+            **found,
             "outcome": "done",
             "say": f"{watching.now_playing}, {spoken_time(position)} in.",
             "title": watching.now_playing,
@@ -255,9 +294,7 @@ class TvService:
         if wrong := await self._itself(tv):
             return wrong
         assert self.library is not None  # noqa: S101 - _target checked it
-        watching = next(
-            (s for s in await self.library.sessions() if s.address == tv.address and s.now_playing), None
-        )
+        watching = await self._watching(tv)
         if watching is None:
             return _refused(f"Nothing is playing on {tv.spoken}.")
         target = (watching.position or 0.0) + seconds if relative else seconds
@@ -271,6 +308,7 @@ class TvService:
             if session is None:
                 return _refused(f"Jellyfin is not open on {tv.spoken}.")
             await self.library.seek(session.id, target)
+        self._moved[tv.key] = (target, self._clock())
         return {
             "outcome": "done",
             "say": f"Jumped to {spoken_time(target)} in {watching.now_playing} on {tv.spoken}.",
@@ -394,3 +432,9 @@ def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:
         "platform": info.platform,
         "developer_mode": info.developer_mode,
     }
+
+
+def _clock(seconds: float) -> str:
+    minutes, rest = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02}:{rest:02}" if hours else f"{minutes}:{rest:02}"

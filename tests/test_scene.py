@@ -86,7 +86,12 @@ def _service(library, *tvs):
     async def no_listen(recognises, target):
         return []
 
-    return TvService(Settings(tvs=tvs or (LIVING,)), drivers={}, listen=no_listen, library=library)
+    async def no_wait(seconds):
+        return None
+
+    return TvService(
+        Settings(tvs=tvs or (LIVING,)), drivers={}, listen=no_listen, library=library, sleep=no_wait
+    )
 
 
 def test_scene_gives_title_time_and_the_lines_around_it():

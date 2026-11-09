@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from tv_mcp.media import CastLogin, Cue, MediaItem, Session, parse_srt
+from tv_mcp.media import CastLogin, Chapter, Cue, MediaItem, Session, parse_srt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -89,7 +89,7 @@ class Jellyfin:
         response.raise_for_status()
 
     async def _details(self, item_id: str) -> dict[str, Any] | None:
-        params = {"ids": item_id, "Fields": "MediaSources,People"}
+        params = {"ids": item_id, "Fields": "MediaSources,People,Chapters"}
         try:
             if user := await self._user_id():
                 params["userId"] = user
@@ -127,6 +127,14 @@ class Jellyfin:
             (p["Role"], p["Name"])
             for p in details.get("People") or []
             if p.get("Type") == "Actor" and p.get("Role") and p.get("Name")
+        ]
+
+    async def chapters(self, item_id: str) -> list[Chapter]:
+        """The item's chapters with their start times."""
+        details = await self._details(item_id) or {}
+        return [
+            Chapter(start=_seconds(c.get("StartPositionTicks")) or 0.0, name=str(c.get("Name") or ""))
+            for c in details.get("Chapters") or []
         ]
 
     async def seek(self, session_id: str, seconds: float) -> None:

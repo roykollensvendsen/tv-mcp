@@ -51,6 +51,14 @@ class Cue:
 
 
 @dataclass(frozen=True)
+class Chapter:
+    """A chapter of a film: where it starts, and its name."""
+
+    start: float  # seconds in
+    name: str
+
+
+@dataclass(frozen=True)
 class CastLogin:
     """What a cast device needs to fetch films from the library as one of its users."""
 
@@ -90,6 +98,10 @@ class MediaLibrary(Protocol):
 
     async def cast(self, item_id: str) -> list[tuple[str, str]]:
         """Each character in the item with the actor who plays them."""
+        ...
+
+    async def chapters(self, item_id: str) -> list[Chapter]:
+        """The item's chapters, in order; empty when it has none."""
         ...
 
 
@@ -152,3 +164,30 @@ def scene_lines(cues: list[Cue], position: float, window: float, limit: int = SC
         kept.append(cue)
         size += len(line)
     return [f"{_clock(c.start)} {c.text}" for c in sorted(kept, key=lambda c: c.start)]
+
+
+_NUMBERED = re.compile(r"(chapter|kapittel|scene)?\s*\d+", re.IGNORECASE)
+#: How long a stretch of a film one line of its outline covers, and the outline's size.
+OUTLINE_EVERY = 300
+OUTLINE_LIMIT = 3000
+
+
+def named(chapters: list[Chapter]) -> bool:
+    """Whether the chapters have names that say something, not "Chapter 3"."""
+    return any(c.name.strip() and not _NUMBERED.fullmatch(c.name.strip()) for c in chapters)
+
+
+def outline(cues: list[Cue], every: float = OUTLINE_EVERY, limit: int = OUTLINE_LIMIT) -> list[str]:
+    """One line per stretch of `every` seconds: its start, and its first words, `limit` characters in all."""
+    if not cues:
+        return []
+    stretches = int(max(c.start for c in cues) // every) + 1
+    room = limit // stretches
+    lines = []
+    for index in range(stretches):
+        words = " ".join(c.text for c in cues if index * every <= c.start < (index + 1) * every)
+        if not words:
+            continue
+        line = f"{_clock(index * every)} {words}"
+        lines.append(line[:room].rstrip())
+    return lines

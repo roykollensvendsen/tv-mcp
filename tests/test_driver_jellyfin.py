@@ -252,3 +252,26 @@ def test_a_session_says_which_item_it_is_playing():
         "PlayState": {"PositionTicks": 0},
     }
     assert _session(page).item_id == "a1"
+
+
+def test_chapters_are_read_with_their_names_and_start_times():
+    def handler(request):
+        if request.url.path == "/Users":
+            return httpx.Response(200, json=[{"Id": "u1"}])
+        return httpx.Response(
+            200,
+            json={
+                "Items": [
+                    {
+                        "Id": "a1",
+                        "Chapters": [
+                            {"StartPositionTicks": 0, "Name": "Opening"},
+                            {"StartPositionTicks": 2700 * 10_000_000, "Name": "The Death Star"},
+                        ],
+                    }
+                ]
+            },
+        )
+
+    chapters = _run(handler, lambda j: j.chapters("a1"))
+    assert [(c.start, c.name) for c in chapters] == [(0.0, "Opening"), (2700.0, "The Death Star")]

@@ -37,8 +37,14 @@ async def _no_listen(recognises, target):
     return []
 
 
+async def _no_wait(seconds):
+    return None
+
+
 def _service(library, *tvs):
-    return TvService(Settings(tvs=tvs or (LIVING,)), drivers={}, listen=_no_listen, library=library)
+    return TvService(
+        Settings(tvs=tvs or (LIVING,)), drivers={}, listen=_no_listen, library=library, sleep=_no_wait
+    )
 
 
 def _play(library, title, tv="The Frame", *tvs):

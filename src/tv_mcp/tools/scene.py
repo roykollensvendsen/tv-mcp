@@ -16,8 +16,9 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
 
     @server.tool(
         description="The subtitle lines within some minutes of where a TV's film is, and its cast,"
-        " to say what is happening or who speaks. Sum them up; never read them out."
+        " to say what is happening or who speaks. Sum them up; never read them out. With chapters,"
+        " also the film's chapters or an outline, to find a scene and seek to its time."
     )
-    async def tv_scene(tv: str, minutes: float = 2.0) -> dict[str, Any]:
-        answer = await service.scene(tv, minutes=minutes)
+    async def tv_scene(tv: str, minutes: float = 2.0, chapters: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002
+        answer = await service.scene(tv, minutes=minutes, chapters=chapters)
         return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}
