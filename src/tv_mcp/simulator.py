@@ -85,7 +85,7 @@ class SimulatedLibrary:
             Session(id="sim-session", address=FRAME_ADDRESS, client="Jellyfin for Tizen", controllable=True)
         ]
 
-    async def play(self, session_id: str, item_id: str) -> None:
+    async def play(self, session_id: str, item_id: str, start: float = 0.0) -> None:  # noqa: ARG002 - the simulator starts at the top
         """Remember what was played."""
         self.played.append((session_id, item_id))
 

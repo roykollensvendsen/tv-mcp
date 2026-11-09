@@ -201,3 +201,48 @@ def test_play_does_not_open_anything_for_a_title_it_cannot_find():
     driver = AppDriver(library)
     asyncio.run(_opening_service(library, driver).play("Jaws", "The Frame"))
     assert driver.opened == []
+
+
+STOPPED = MediaItem(
+    id="a1",
+    title=HOPE.title,
+    year=1977,
+    kind="Movie",
+    position=72 * 60,
+    runtime=121 * 60,
+    last_played="2026-11-08",
+)
+
+
+class ResumingLibrary(FakeLibrary):
+    async def play(self, session_id, item_id, start=0.0):
+        self.played.append((session_id, item_id, start))
+
+
+def test_search_says_where_a_film_was_stopped_and_when():
+    found = asyncio.run(_service(FakeLibrary([STOPPED], [])).search("new hope"))
+    [item] = found["items"]
+    assert (item["stopped_at"], item["last_watched"]) == ("1 h 12 min", "2026-11-08")
+
+
+def test_a_film_that_was_stopped_carries_on_where_it_stopped():
+    library = ResumingLibrary([STOPPED], [FRAME_SESSION])
+    answer = _play(library, "A New Hope")
+    assert library.played == [("s1", "a1", 72 * 60)]
+    assert "from 1 h 12 min" in answer["say"]
+
+
+def test_status_says_what_is_playing_how_far_in_and_how_much_is_left():
+    watching = Session(
+        id="s1",
+        address="192.0.2.10",
+        client="Jellyfin for Tizen",
+        controllable=True,
+        now_playing=HOPE.title,
+        position=72 * 60,
+        runtime=121 * 60,
+        paused=False,
+    )
+    service = _service(FakeLibrary([HOPE], [watching]))
+    [report] = asyncio.run(service.status("The Frame"))
+    assert report["playing"] == {"title": HOPE.title, "at": "1 h 12 min", "left": "49 min", "paused": False}

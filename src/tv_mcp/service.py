@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.media import COMMANDS
+from tv_mcp.media import COMMANDS, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
@@ -68,12 +68,19 @@ class TvService:
     async def status(self, name: str | None) -> list[dict[str, Any]]:
         """One report per TV, or for the one named."""
         if name is None:
-            return [await self._read(tv) for tv in self.settings.tvs]
-        try:
-            tv = find_tv(self.settings, name)
-        except (UnknownTvError, AmbiguousTvError) as refusal:
-            return [{"tv": name, "state": "refused", "say": str(refusal)}]
-        return [await self._read(tv)]
+            tvs = list(self.settings.tvs)
+        else:
+            try:
+                tvs = [find_tv(self.settings, name)]
+            except (UnknownTvError, AmbiguousTvError) as refusal:
+                return [{"tv": name, "state": "refused", "say": str(refusal)}]
+        reports = [await self._read(tv) for tv in tvs]
+        sessions = await self.library.sessions() if self.library else []
+        for tv, report in zip(tvs, reports, strict=True):
+            watching = next((s for s in sessions if s.address == tv.address and s.now_playing), None)
+            if watching and not tv.hands_off:
+                report["playing"] = _playing(watching)
+        return reports
 
     async def discover(self, *, full: bool) -> dict[str, Any]:
         """The TVs in the settings, and any others that announced themselves."""
@@ -92,7 +99,7 @@ class TvService:
         if self.library is None:
             return {"items": [], "say": NO_LIBRARY}
         found = await self.library.search(term)
-        return {"items": [{"title": i.title, "year": i.year, "kind": i.kind} for i in found]}
+        return {"items": [_found(i) for i in found]}
 
     def _target(self, name: str) -> Tv | dict[str, Any]:
         """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""
@@ -206,14 +213,38 @@ class TvService:
                 f"Jellyfin is not open on {tv.spoken}, and I could not open it. Open it there first."
             )
         item = next(i for i in found if i.id == chosen)
-        await self.library.play(session.id, item.id)
-        return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}."}
+        if item.position:
+            await self.library.play(session.id, item.id, start=item.position)
+            where = f" from {spoken_time(item.position)}"
+        else:
+            await self.library.play(session.id, item.id)
+            where = ""
+        return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}{where}."}
 
 
 #: How long play waits, in seconds, for Jellyfin it opened to connect.
 OPEN_WAIT = 15.0
 
 NO_LIBRARY = "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key."
+
+
+def _found(item: MediaItem) -> dict[str, Any]:
+    found: dict[str, Any] = {"title": item.title, "year": item.year, "kind": item.kind}
+    if item.position:
+        found["stopped_at"] = spoken_time(item.position)
+    if item.last_played:
+        found["last_watched"] = item.last_played
+    return found
+
+
+def _playing(session: Session) -> dict[str, Any]:
+    playing: dict[str, Any] = {"title": session.now_playing}
+    if session.position is not None:
+        playing["at"] = spoken_time(session.position)
+    if session.position is not None and session.runtime:
+        playing["left"] = spoken_time(max(session.runtime - session.position, 0))
+    playing["paused"] = session.paused
+    return playing
 
 
 def _refused(say: str) -> dict[str, Any]:

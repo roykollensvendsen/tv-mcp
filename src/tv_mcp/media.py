@@ -20,6 +20,9 @@ class MediaItem:
     title: str
     year: int | None
     kind: str
+    position: float | None = None  # seconds in, where it was stopped
+    runtime: float | None = None  # seconds long
+    last_played: str | None = None  # the date, as YYYY-MM-DD
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,10 @@ class Session:
     address: str | None
     client: str
     controllable: bool
+    now_playing: str | None = None  # the title playing, if any
+    position: float | None = None  # seconds in
+    runtime: float | None = None  # seconds long
+    paused: bool = False
 
 
 class MediaLibrary(Protocol):
@@ -43,8 +50,8 @@ class MediaLibrary(Protocol):
         """The apps connected to the library now."""
         ...
 
-    async def play(self, session_id: str, item_id: str) -> None:
-        """Start `item_id` at once in the app with `session_id`."""
+    async def play(self, session_id: str, item_id: str, start: float = 0.0) -> None:
+        """Start `item_id` at once in the app with `session_id`, `start` seconds in."""
         ...
 
     async def control(self, session_id: str, command: str) -> None:
@@ -54,3 +61,10 @@ class MediaLibrary(Protocol):
 
 #: What can be done to something playing.
 COMMANDS = ("pause", "resume", "stop")
+
+
+def spoken_time(seconds: float) -> str:
+    """A length of time as it is said: "1 h 12 min", "49 min"."""
+    minutes = int(seconds // 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min" if hours else f"{minutes} min"

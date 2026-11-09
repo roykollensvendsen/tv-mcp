@@ -44,7 +44,7 @@ def test_search_asks_for_films_and_episodes_with_the_key():
     found = _run(handler, lambda j: j.search("new hope"))
     assert [i.title for i in found] == ["Star Wars: Episode IV - A New Hope", "Rogue One: A Star Wars Story"]
     assert found[0].year == 1977
-    [request] = seen
+    [request] = [r for r in seen if r.url.path == "/Items"]
     assert request.url.path == "/Items"
     assert request.url.params["searchTerm"] == "new hope"
     assert "Movie" in request.url.params["IncludeItemTypes"]
@@ -92,3 +92,55 @@ def test_control_sends_stop_pause_and_unpause():
     for command in ("stop", "pause", "resume"):
         _run(handler, lambda j, c=command: j.control("s1", c))
     assert seen == ["/Sessions/s1/Playing/Stop", "/Sessions/s1/Playing/Pause", "/Sessions/s1/Playing/Unpause"]
+
+
+TICKS = 10_000_000  # Jellyfin counts time in ticks of 100 ns
+
+
+def _server(seen):
+    def handler(request):
+        seen.append(request)
+        if request.url.path == "/Users":
+            return httpx.Response(200, json=[{"Id": "u1", "Name": "family"}])
+        if request.url.path == "/Items":
+            stopped = {"PlaybackPositionTicks": 72 * 60 * TICKS, "LastPlayedDate": "2026-11-08T20:15:00Z"}
+            hope = {**ITEMS["Items"][0], "RunTimeTicks": 121 * 60 * TICKS, "UserData": stopped}
+            return httpx.Response(200, json={"Items": [hope, ITEMS["Items"][1]]})
+        if request.url.path == "/Sessions":
+            playing = {
+                **SESSIONS[0],
+                "NowPlayingItem": {
+                    "Name": "Star Wars: Episode IV - A New Hope",
+                    "RunTimeTicks": 121 * 60 * TICKS,
+                },
+                "PlayState": {"PositionTicks": 72 * 60 * TICKS, "IsPaused": True},
+            }
+            return httpx.Response(200, json=[playing, SESSIONS[1]])
+        return httpx.Response(204)
+
+    return handler
+
+
+def test_search_gives_where_each_item_was_stopped_and_when_it_was_last_watched():
+    seen = []
+    hope, rogue = _run(_server(seen), lambda j: j.search("star wars"))
+    assert (hope.position, hope.runtime, hope.last_played) == (72 * 60, 121 * 60, "2026-11-08")
+    assert rogue.position is None
+    assert seen[-1].url.params["userId"] == "u1"
+
+
+def test_sessions_say_what_is_playing_how_far_in_and_whether_paused():
+    playing, idle = _run(_server([]), lambda j: j.sessions())
+    assert (playing.now_playing, playing.position, playing.runtime, playing.paused) == (
+        "Star Wars: Episode IV - A New Hope",
+        72 * 60,
+        121 * 60,
+        True,
+    )
+    assert idle.now_playing is None
+
+
+def test_play_can_start_from_a_position():
+    seen = []
+    _run(_server(seen), lambda j: j.play("s1", "a1", start=72 * 60))
+    assert seen[-1].url.params["startPositionTicks"] == str(72 * 60 * TICKS)

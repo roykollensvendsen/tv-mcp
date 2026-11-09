@@ -20,13 +20,32 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
             lines.append(report["say"])
         else:
             name = report["tv"] or (f"a {report['model']}" if report.get("model") else "an unknown TV")
-            lines.append(f"{_capital(name)} is {report['state']}.")
+            lines.append(f"{_capital(name)} is {report['state']}{_playing(report.get('playing'))}.")
     return " ".join(lines)
+
+
+def _playing(playing: dict[str, Any] | None) -> str:
+    """What is playing, how far in and what is left, as the end of a sentence."""
+    if not playing:
+        return ""
+    what = f", {playing['title']} is paused" if playing.get("paused") else f", playing {playing['title']}"
+    far = [f"{playing['at']} in"] if playing.get("at") else []
+    far += [f"{playing['left']} left"] if playing.get("left") else []
+    return what + (": " + ", ".join(far) if far else "")
+
+
+def _item(item: dict[str, Any]) -> str:
+    said = f"{item['title']} ({item['year']})" if item.get("year") else item["title"]
+    if item.get("stopped_at"):
+        said += f", stopped at {item['stopped_at']}"
+        if item.get("last_watched"):
+            said += f" on {item['last_watched']}"
+    return said
 
 
 def items_line(term: str, items: list[dict[str, Any]]) -> str:
     """What a search found, titles and years."""
     if not items:
         return f"Found nothing called {term!r}."
-    found = "; ".join(f"{i['title']} ({i['year']})" if i.get("year") else i["title"] for i in items)
+    found = "; ".join(_item(i) for i in items)
     return f"Found: {found}."
