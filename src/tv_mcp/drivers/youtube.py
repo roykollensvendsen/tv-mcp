@@ -33,8 +33,9 @@ if TYPE_CHECKING:
 SEARCH_SIZE = 8
 #: Videos this short are taken for Shorts, which the Lounge cannot start.
 SHORTEST = 61
-#: How long to wait for a screen to say it plays the video.
-START_WAIT = 20.0
+#: How long to wait for a screen to say it plays the video, and how many times to ask.
+START_WAIT = 30.0
+START_TRIES = 2
 API = "https://www.googleapis.com/youtube/v3"
 _ISO = re.compile(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
@@ -57,6 +58,44 @@ def videos_from_search(entries: list[dict[str, Any]]) -> list[Video]:
         if video:
             found.append(video)
     return found
+
+
+def video_from_page(page: dict[str, Any]) -> Video | None:
+    """The video one video's page describes, without the Shorts and length checks of a search."""
+    if not page.get("id") or not page.get("title"):
+        return None
+    duration = page.get("duration")
+    return Video(
+        id=str(page["id"]),
+        title=str(page["title"]),
+        channel=page.get("channel") or page.get("uploader") or None,
+        duration=float(duration) if duration else None,
+    )
+
+
+class StartWatch:
+    """Watches a screen's reports until it says it is playing one video.
+
+    The screen names the video as soon as it starts loading it; leaving then
+    stops it, so only "Playing" counts (2026-11-09, on the garage Chromecast).
+    """
+
+    def __init__(self, video_id: str) -> None:
+        """Wait for `video_id`."""
+        self._video_id = video_id
+        self._current: str | None = None
+        self.started, self.advert = asyncio.Event(), False
+
+    def now_playing(self, video_id: str | None, state: str) -> None:
+        """The screen changed video; `state` is the name of its playing state."""
+        self._current = video_id
+        self.playback(state)
+
+    def playback(self, state: str) -> None:
+        """The screen's playing state changed; an advert before the video counts as started."""
+        if self._current == self._video_id and state in {"Playing", "Advertisement"}:
+            self.advert = self.advert or state == "Advertisement"
+            self.started.set()
 
 
 def _seconds(iso: str) -> float | None:
@@ -103,6 +142,18 @@ class YtDlpSearch:
 
         return videos_from_search(await asyncio.to_thread(run))
 
+    async def video(self, video_id: str) -> Video | None:  # pragma: no cover - reaches YouTube
+        """The video's own page, read without downloading anything."""
+        import yt_dlp  # type: ignore[import-not-found,import-untyped,unused-ignore]  # noqa: PLC0415
+
+        def run() -> dict[str, Any]:
+            options = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True}
+            with yt_dlp.YoutubeDL(options) as site:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                return dict(site.extract_info(url, download=False, process=False) or {})
+
+        return video_from_page(await asyncio.to_thread(run))
+
 
 class DataApiSearch:
     """Search with YouTube's Data API: official, needs a key, 100 searches a day."""
@@ -121,6 +172,21 @@ class DataApiSearch:
             return []
         details = await self._get("/videos", {"part": "contentDetails", "id": ",".join(ids)})
         return videos_from_api(search, details)
+
+    async def video(self, video_id: str) -> Video | None:
+        """The video with `video_id`, with its length."""
+        page = await self._get("/videos", {"part": "snippet,contentDetails", "id": video_id})
+        for item in page.get("items", []):
+            snippet = item.get("snippet", {})
+            return video_from_page(
+                {
+                    "id": item.get("id"),
+                    "title": snippet.get("title"),
+                    "channel": snippet.get("channelTitle"),
+                    "duration": _seconds(item.get("contentDetails", {}).get("duration", "")),
+                }
+            )
+        return None
 
     async def _get(self, path: str, params: dict[str, str]) -> dict[str, Any]:
         response = await self._client.get(API + path, params={**params, "key": self._key}, timeout=10)
@@ -149,6 +215,18 @@ class FirstThatAnswers:
         except Exception:  # noqa: BLE001
             return []
 
+    async def video(self, video_id: str) -> Video | None:
+        """The video as the first search knows it, or else as the second does."""
+        for search in (self._first, self._then):
+            if search is None:
+                continue
+            try:
+                if found := await search.video(video_id):
+                    return found
+            except Exception:  # noqa: BLE001, S112 - any failure means trying the other
+                continue
+        return None
+
 
 class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
     """Start a video on a screen through YouTube's Lounge, pairing once per TV."""
@@ -156,17 +234,21 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
     def __init__(self, folder: pathlib.Path) -> None:
         """Keep each TV's pairing in `folder`."""
         self._folder = folder
+        #: Whether the last video started with an advert.
+        self.advert = False
 
     async def play(self, tv_key: str, screen_id: str, video_id: str) -> bool:
         """Start `video_id`; True only once the screen says it is playing it."""
         from pyytlounge import EventListener, YtLoungeApi  # type: ignore[import-untyped,unused-ignore]  # noqa: PLC0415 - the optional youtube extra
 
-        started = asyncio.Event()
+        watch = StartWatch(video_id)
 
         class Watch(EventListener):  # type: ignore[misc,unused-ignore]
             async def now_playing_changed(self, event: Any) -> None:  # noqa: ANN401 - pyytlounge's event
-                if getattr(event, "video_id", None) == video_id:
-                    started.set()
+                watch.now_playing(getattr(event, "video_id", None), getattr(event.state, "name", ""))
+
+            async def playback_state_changed(self, event: Any) -> None:  # noqa: ANN401 - pyytlounge's event
+                watch.playback(getattr(event.state, "name", ""))
 
         file = self._folder / f"{tv_key}-youtube"
         async with YtLoungeApi("tv-mcp", Watch()) as api:
@@ -182,14 +264,19 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
                 return False
             listening = asyncio.create_task(api.subscribe())
             try:
-                if not await api.play_video(video_id):
-                    return False
-                with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(started.wait(), START_WAIT)
-                return started.is_set()
+                for _ in range(START_TRIES):
+                    if not await api.play_video(video_id):
+                        continue
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(watch.started.wait(), START_WAIT)
+                    if watch.started.is_set():
+                        self.advert = watch.advert
+                        return True
+                return False
             finally:
+                # Only stop listening. pyytlounge's disconnect() tells the screen the
+                # user stopped casting, and the screen then stops the video
+                # (2026-11-09, on the garage Chromecast).
                 listening.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await listening
-                with contextlib.suppress(Exception):
-                    await api.disconnect()

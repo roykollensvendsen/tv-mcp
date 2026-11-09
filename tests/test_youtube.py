@@ -6,7 +6,13 @@ import asyncio
 import httpx
 
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
-from tv_mcp.drivers.youtube import FirstThatAnswers, videos_from_api, videos_from_search
+from tv_mcp.drivers.youtube import (
+    FirstThatAnswers,
+    StartWatch,
+    video_from_page,
+    videos_from_api,
+    videos_from_search,
+)
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
 from tv_mcp.video import Video, is_video_id
@@ -64,8 +70,12 @@ def test_the_fallback_search_is_used_when_the_first_finds_nothing_or_fails():
         async def search(self, words):
             return [TRAILER]
 
+        async def video(self, video_id):
+            return TRAILER
+
     assert asyncio.run(FirstThatAnswers(Fails(), Finds()).search("star wars")) == [TRAILER]
     assert asyncio.run(FirstThatAnswers(Finds(), Fails()).search("star wars")) == [TRAILER]
+    assert asyncio.run(FirstThatAnswers(Fails(), Finds()).video("XHk5kCIiGoM")) == TRAILER
 
 
 def test_a_video_id_is_told_from_words():
@@ -81,6 +91,9 @@ class Videos:
     async def search(self, words):
         self.asked.append(words)
         return list(self.found)
+
+    async def video(self, video_id):
+        return next((v for v in self.found if v.id == video_id), None)
 
 
 class Lounge:
@@ -147,11 +160,41 @@ def test_playing_words_starts_the_best_match_and_says_so_once_it_plays():
     assert "STAR WARS Original Trailer" in answer["say"]
 
 
-def test_playing_a_video_id_does_not_search():
-    videos, lounge = Videos([]), Lounge()
-    asyncio.run(_service(videos, lounge, YouTubeTv()).play_youtube("XHk5kCIiGoM", "the living room"))
+def test_playing_a_video_id_does_not_search_but_names_the_video():
+    videos, lounge = Videos([TRAILER]), Lounge()
+    answer = asyncio.run(_service(videos, lounge, YouTubeTv()).play_youtube("XHk5kCIiGoM", "the living room"))
     assert videos.asked == []
     assert lounge.played[0][2] == "XHk5kCIiGoM"
+    assert answer["video"]["channel"] == "The ReDiscovered Future"
+    assert "STAR WARS Original Trailer" in answer["say"]
+
+
+def test_one_videos_page_gives_its_title_channel_and_length():
+    page = {
+        "id": "XHk5kCIiGoM",
+        "title": "STAR WARS Original Trailer",
+        "channel": "The ReDiscovered Future",
+        "duration": 122,
+    }
+    assert video_from_page(page) == TRAILER
+    assert video_from_page({"id": "x"}) is None
+
+
+def test_a_video_counts_as_started_only_once_the_screen_says_it_plays_it():
+    watch = StartWatch("XHk5kCIiGoM")
+    watch.now_playing(None, "Stopped")
+    watch.now_playing("XHk5kCIiGoM", "Starting")
+    watch.playback("Starting")
+    assert not watch.started.is_set()
+    watch.playback("Playing")
+    assert watch.started.is_set()
+
+
+def test_another_video_playing_does_not_count():
+    watch = StartWatch("XHk5kCIiGoM")
+    watch.now_playing("HHbt6rPuC3M", "Playing")
+    watch.playback("Playing")
+    assert not watch.started.is_set()
 
 
 def test_a_video_that_does_not_start_is_said_plainly():
@@ -249,3 +292,16 @@ def test_a_youtube_key_beside_the_settings_is_read(tmp_path):
     settings.write_text("")
     (tmp_path / "youtube-key").write_text("example-youtube-key\n")
     assert load_settings(settings).youtube_key == "example-youtube-key"
+
+
+def test_an_advert_before_the_video_counts_as_started_and_is_said():
+    watch = StartWatch("XHk5kCIiGoM")
+    watch.now_playing("XHk5kCIiGoM", "Advertisement")
+    assert watch.started.is_set()
+    assert watch.advert
+    lounge = Lounge()
+    lounge.advert = True
+    answer = asyncio.run(
+        _service(Videos([TRAILER]), lounge, YouTubeTv()).play_youtube("XHk5kCIiGoM", "the living room")
+    )
+    assert answer["say"].endswith("after an advert.")

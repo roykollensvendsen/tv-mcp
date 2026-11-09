@@ -189,7 +189,9 @@ class TvService:
         if wrong := await self._itself(tv):
             return wrong
         if is_video_id(words):
-            video = Video(id=words, title="the video", channel=None, duration=None)
+            video = await self.videos.video(words) or Video(
+                id=words, title="the video", channel=None, duration=None
+            )
         else:
             found = await self.videos.search(words)
             if not found:
@@ -200,7 +202,12 @@ class TvService:
             return _refused(f"YouTube did not open on {tv.spoken}.")
         if not await self.lounge.play(tv.key, screen, video.id):
             return _refused(f"YouTube opened on {tv.spoken}, but {video.title} did not start.")
-        return {"outcome": "playing", "say": f"Playing {video.title} on {tv.spoken}.", "video": _video(video)}
+        advert = " after an advert" if getattr(self.lounge, "advert", False) else ""
+        return {
+            "outcome": "playing",
+            "say": f"Playing {video.title} on {tv.spoken}{advert}.",
+            "video": _video(video),
+        }
 
     def _target(self, name: str) -> Tv | dict[str, Any]:
         """The TV to act on, or a refusal: unknown, ambiguous, left alone, or no library."""

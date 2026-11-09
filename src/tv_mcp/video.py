@@ -37,10 +37,14 @@ class VideoSearch(Protocol):
         """Videos matching `words`, best first; empty when nothing was found."""
         ...
 
+    async def video(self, video_id: str) -> Video | None:
+        """The video with `video_id`, or None when it is not found."""
+        ...
+
 
 class Lounge(Protocol):
     """Starts a video in the YouTube app on a screen, as the phone app does."""
 
     async def play(self, tv_key: str, screen_id: str, video_id: str) -> bool:
-        """Start `video_id` on the screen; True only once the screen says it plays it."""
+        """Start `video_id` on the screen; True only once the screen says it is playing it, not loading."""
         ...
