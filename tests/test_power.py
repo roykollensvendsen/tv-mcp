@@ -180,5 +180,27 @@ def test_a_tv_that_does_not_change_after_the_key_is_not_called_switched():
     _run(power.request("off", "The Frame"))
     answer = _run(power.confirm("token-0"))
     assert answer["outcome"] == "unverified"
-    assert "still" in answer["say"]
+    assert "not off yet" in answer["say"]
     assert driver.switched == [("living-room", False)]
+
+
+def test_a_switch_that_does_not_take_is_answered_within_the_voices_time_limit():
+    # 2026-11-09: switching the garage TV on hung past the voice's 30 seconds and came back as a raw error.
+    from tv_mcp.power import SETTLE  # noqa: PLC0415
+
+    clock = Clock()
+    service = TvService(
+        Settings(tvs=(LIVING,)), drivers={"samsung-tizen": PowerDriver("on", obeys=False)}, listen=_no_listen
+    )
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    tokens = iter(f"token-{n}" for n in range(9))
+    power = PowerService(service, clock=clock, new_token=lambda: next(tokens), sleep=ticking)
+    _run(power.request("off", "The Frame"))
+    started = clock.now
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "unverified"
+    assert clock.now - started <= SETTLE
+    assert SETTLE <= 15

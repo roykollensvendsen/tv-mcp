@@ -27,8 +27,10 @@ if TYPE_CHECKING:
 REMOTE_PORT, MEDIA_PORT = 55000, 7676
 #: The name the TV shows in its "allow" question, and remembers.
 NAME = "tv-mcp"
-#: How long the owner gets to answer the TV's "allow" question.
-ANSWER_WAIT = 30.0
+#: How long the owner gets to answer the TV's "allow" question, within the voice's 30 seconds.
+ANSWER_WAIT = 15.0
+#: How long a TV in standby gets to answer; one that is let in answers at once.
+STANDBY_WAIT = 3.0
 
 
 def _string(text: bytes | str, *, raw: bool = False) -> bytes:
@@ -103,7 +105,7 @@ class SamsungLegacy:
         *,
         reach: Callable[[str, int], Awaitable[bool]] = _reach,
         wake: Callable[[str, str], None] | None = None,
-        press: Callable[[str, str], Awaitable[bool]] | None = None,
+        press: Callable[[str, str, float], Awaitable[bool]] | None = None,
     ) -> None:
         """Check ports with `reach`, send wake packets with `wake`, and press keys with `press`."""
         self._reach, self._wake = reach, wake or _send_wake
@@ -131,12 +133,15 @@ class SamsungLegacy:
         if on and tv.mac:
             self._wake(tv.mac, tv.address)
             woken = True
-        pressed = await self._press(tv.address, "KEY_POWERON" if on else "KEY_POWEROFF")
+        if on:
+            pressed = await self._press(tv.address, "KEY_POWERON", STANDBY_WAIT)
+        else:
+            pressed = await self._press(tv.address, "KEY_POWEROFF", ANSWER_WAIT)
         # In deep standby the remote port may not answer; the wake packet may still switch it on.
         return pressed or woken
 
 
-async def _press(address: str, key: str) -> bool:  # pragma: no cover - a real TV
+async def _press(address: str, key: str, wait: float) -> bool:  # pragma: no cover - a real TV
     """Press `key` on the TV's remote port, after it lets tv-mcp in."""
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(address, REMOTE_PORT), 5.0)
@@ -147,7 +152,7 @@ async def _press(address: str, key: str) -> bool:  # pragma: no cover - a real T
         await writer.drain()
         answer = "waiting"
         while answer == "waiting":
-            header = await asyncio.wait_for(reader.readexactly(3), ANSWER_WAIT)
+            header = await asyncio.wait_for(reader.readexactly(3), wait)
             await reader.readexactly(int.from_bytes(header[1:3], "little"))
             size = int.from_bytes(await reader.readexactly(2), "little")
             answer = answer_of(await reader.readexactly(size))

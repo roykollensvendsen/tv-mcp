@@ -26,8 +26,9 @@ if TYPE_CHECKING:
 
 #: How long a question stays open, in seconds.
 EXPIRES = 30.0
-#: How many seconds to watch a TV for its new state after switching it.
-SETTLE = 25
+#: How many seconds to watch a TV for its new state after switching it; the
+#: voice gives a tool 30 seconds in all.
+SETTLE = 12
 #: The words a request takes.
 STATES = ("on", "off")
 _OFF = {"standby", "standby or art mode", "off or not reachable"}
@@ -121,11 +122,14 @@ class PowerService:
         )
         if switcher is None or not await switcher.switch(target, on=pending.on):
             return _refused(f"{pending.tv.spoken.capitalize()} did not answer.")
+        watched_from = self._clock()
         for _ in range(SETTLE):
             if await self._state(pending.tv) == wanted:
                 return {"outcome": "done", "say": f"{pending.tv.spoken.capitalize()} is {wanted} now."}
+            if self._clock() - watched_from >= SETTLE - 1:
+                break
             await self._sleep(1.0)
         return {
             "outcome": "unverified",
-            "say": f"I sent it, but {pending.tv.spoken} still does not seem {wanted}.",
+            "say": f"I sent it, but {pending.tv.spoken} is not {wanted} yet.",
         }

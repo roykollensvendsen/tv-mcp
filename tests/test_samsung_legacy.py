@@ -146,7 +146,7 @@ def test_switching_on_counts_as_sent_when_the_wake_packet_went_though_the_remote
 
     woken = []
 
-    async def silent(address, key):
+    async def silent(address, key, wait):
         return False
 
     legacy = SamsungLegacy(wake=lambda mac, address: woken.append((mac, address)), press=silent)
