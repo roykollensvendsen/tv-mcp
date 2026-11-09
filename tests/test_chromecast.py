@@ -24,9 +24,17 @@ HOPE = MediaItem(id="a1", title="A New Hope", year=1977, kind="Movie", position=
 
 
 def test_the_play_message_carries_the_item_where_to_start_and_the_users_login():
-    message = play_message(LOGIN, "a1", 72 * 60)
+    message = play_message(LOGIN, HOPE, 72 * 60)
     assert message["command"] == "PlayNow"
-    assert message["options"]["items"][0]["Id"] == "a1"
+    # Without its type and media type the receiver loads the item but never plays it (2026-11-09).
+    assert message["options"]["items"][0] == {
+        "Id": "a1",
+        "ServerId": "srv",
+        "Name": "A New Hope",
+        "Type": "Movie",
+        "MediaType": "Video",
+        "IsFolder": False,
+    }
     assert message["options"]["startPositionTicks"] == 72 * 60 * 10_000_000
     assert (message["accessToken"], message["userId"], message["serverAddress"]) == (
         "user-token",
@@ -58,7 +66,7 @@ def _driver(sent, login=_login, handler=None):
 
 def test_a_film_is_cast_to_the_chromecast_at_the_tvs_address():
     sent = []
-    assert asyncio.run(_driver(sent).cast("192.0.2.20", "a1", 0)) is True
+    assert asyncio.run(_driver(sent).cast("192.0.2.20", HOPE, 0)) is True
     assert sent == [("192.0.2.20", "PlayNow")]
     assert JELLYFIN_RECEIVER == "F007D354"
 
@@ -68,7 +76,7 @@ def test_without_a_user_login_nothing_is_cast():
         return None
 
     sent = []
-    assert asyncio.run(_driver(sent, login=none).cast("192.0.2.20", "a1", 0)) is False
+    assert asyncio.run(_driver(sent, login=none).cast("192.0.2.20", HOPE, 0)) is False
     assert sent == []
 
 
@@ -101,8 +109,8 @@ class CastDriver:
     async def read_info(self, address):
         return None
 
-    async def cast(self, address, item_id, start):
-        self.casts.append((address, item_id, start))
+    async def cast(self, address, item, start):
+        self.casts.append((address, item.id, start))
         return True
 
     async def cast_control(self, address, command):
@@ -162,3 +170,22 @@ def test_a_chromecast_that_answers_is_reported_reachable_since_its_tv_cannot_be_
 
     [report] = asyncio.run(_service(Answering()).status("garage"))
     assert report["state"] == "reachable"
+
+
+def test_the_receivers_report_says_which_item_it_is_playing():
+    from tv_mcp.drivers.chromecast import playing_item  # noqa: PLC0415
+
+    started = {"data": {"ItemId": "a1", "PlayState": {"CanSeek": True, "PositionTicks": 0}}}
+    assert playing_item(started) == "a1"
+    # Loaded but not started: it names the item but cannot seek in it yet.
+    assert playing_item({"data": {"ItemId": "a1", "PlayState": {"CanSeek": False}}}) is None
+    assert playing_item({"data": {"ItemId": "", "PlayState": {}}}) is None
+    assert playing_item({"type": "something else"}) is None
+
+
+def test_a_cast_that_does_not_start_is_reported_as_not_playing():
+    async def send(address, message):
+        return False  # the receiver never said it was playing
+
+    driver = Chromecast(httpx.AsyncClient(), login=_login, send=send)
+    assert asyncio.run(driver.cast("192.0.2.20", HOPE, 0)) is False

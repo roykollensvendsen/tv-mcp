@@ -121,7 +121,7 @@ class TvService:
 
     async def _cast(self, caster: Casts, tv: Tv, item: MediaItem) -> dict[str, Any]:
         """Cast `item` to `tv`, from where it was stopped."""
-        if not await caster.cast(tv.address or "", item.id, item.position or 0.0):
+        if not await caster.cast(tv.address or "", item, item.position or 0.0):
             return _refused(f"I could not cast to {tv.spoken}. Is the Chromecast on?")
         where = f" from {spoken_time(item.position)}" if item.position else ""
         return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}{where}."}

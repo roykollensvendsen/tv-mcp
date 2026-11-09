@@ -32,10 +32,24 @@ Tested on a Chromecast ("Garasje") in a 2012 Samsung UE40ES6715, 2026-11-09.
 5. **`serverAddress` must be reachable from the Chromecast.** "localhost" in
    the settings means the Chromecast itself; tv-mcp names the server by this
    computer's address on the Chromecast's network.
-6. **Pause, resume and stop go to the receiver**, not through Jellyfin: the
-   Chromecast's Jellyfin session says it takes no remote control. What is
-   playing and how far in still shows in Jellyfin's sessions.
-7. **Power.** Starting the receiver may switch the TV on and to the
+6. **Each item in `PlayNow` needs its `Name`, `Type` and `MediaType`**
+   ("Movie", "Video"). With the id alone the receiver asks the server about
+   the item and then never starts the stream: the session sits at 0 min and
+   no transcode starts (2026-11-09).
+7. **Never leave the receiver.** It closes when its last sender disconnects
+   on purpose, so a sender that sends and then disconnects ends the film in
+   seconds, while Jellyfin's session keeps guessing a growing position.
+   tv-mcp keeps one connection per Chromecast open for as long as it runs.
+   Check the Chromecast's own app (`cast.app_display_name`, "Backdrop" means
+   idle), not only Jellyfin's session, before believing a film is playing.
+8. **A command never launches the receiver.** Launching a running receiver
+   restarts it and ends the film. Pause, resume and stop are sent to the
+   receiver already running (its own `Pause`, `Unpause`, `Stop`), and refused
+   when it is not; the Chromecast's Jellyfin session takes no remote control.
+9. **Count a cast as playing only when the receiver says so**: its playback
+   report names the item and `CanSeek` is true. Before that it may name the
+   item while nothing plays.
+10. **Power.** Starting the receiver may switch the TV on and to the
    Chromecast's input over HDMI-CEC (Samsung: Anynet+), not yet tested. A
    Chromecast can never switch its TV off; that needs the TV's own driver.
    tv-mcp reports a Chromecast as "reachable", never "on", because it cannot

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from tv_mcp.media import MediaItem
     from tv_mcp.settings import Tv
 
 
@@ -82,8 +83,8 @@ class OpensApps(Protocol):
 class Casts(Protocol):
     """A driver whose device plays library items itself, as a Chromecast does."""
 
-    async def cast(self, address: str, item_id: str, start: float) -> bool:
-        """Start `item_id`, `start` seconds in; False when it did not."""
+    async def cast(self, address: str, item: MediaItem, start: float) -> bool:
+        """Start `item`, `start` seconds in; False when it did not start."""
         ...
 
     async def cast_control(self, address: str, command: str) -> bool:
