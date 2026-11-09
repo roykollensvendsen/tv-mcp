@@ -12,7 +12,7 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.driver import ShowsYouTube
+from tv_mcp.driver import HasSound, ShowsYouTube
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 from tv_mcp.video import Video, is_video_id
@@ -39,6 +39,8 @@ LOOK_AGAIN = 3
 #: For how many seconds after a seek the TV's own report of the position is not believed.
 FRESH = 20.0
 
+#: The loudest the voice may set a TV, out of 100, so a misheard number is never deafening.
+LOUDEST = 50
 #: What the voice says when YouTube is not switched on.
 NO_YOUTUBE = "YouTube is not set up. Add 'youtube' to the features in the settings."
 #: How many videos a YouTube search reads out.
@@ -355,6 +357,35 @@ class TvService:
                 f"{role}: {actor}" for role, actor in (await self.library.cast(watching.item_id))[:CAST_LIMIT]
             ],
         }
+
+    async def sound(  # noqa: PLR0911 - one refusal per reason
+        self, command: str, name: str, *, level: int | None = None, relative: bool = False
+    ) -> dict[str, Any]:
+        """Mute, unmute, or set the volume (0 to 100, or by `level` when relative) on the TV called `name`."""
+        tv = self._tv(name)
+        if not isinstance(tv, Tv):
+            return tv
+        driver = self.drivers.get(tv.driver)
+        if not isinstance(driver, HasSound):
+            return _refused(f"I cannot change the sound on {tv.spoken}.")
+        if wrong := await self._itself(tv):
+            return wrong
+        address = tv.address or ""
+        if command in {"mute", "unmute"}:
+            if not await driver.set_mute(address, on=command == "mute"):
+                return _refused(f"{_capital(tv.spoken)} did not answer.")
+            return {"outcome": "done", "say": f"{'Muted' if command == 'mute' else 'Unmuted'} {tv.spoken}."}
+        if level is None:
+            return _refused("Say how loud, or how much louder or quieter.")
+        now = await driver.volume(address) if relative else 0
+        if now is None:
+            return _refused(f"{_capital(tv.spoken)} did not say its volume.")
+        wanted = now + level if relative else level
+        target = max(0, min(wanted, LOUDEST))
+        if not await driver.set_volume(address, target):
+            return _refused(f"{_capital(tv.spoken)} did not answer.")
+        capped = f", at most {LOUDEST}" if wanted > LOUDEST else ""
+        return {"outcome": "done", "say": f"Volume {target} on {tv.spoken}{capped}.", "volume": target}
 
     async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
         """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""

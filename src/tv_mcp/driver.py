@@ -111,3 +111,20 @@ class ShowsYouTube(Protocol):
     async def youtube_screen(self, address: str) -> str | None:
         """Open YouTube on the TV and give its screen id, or None when it did not open."""
         ...
+
+
+@runtime_checkable
+class HasSound(Protocol):
+    """A driver that can mute its TVs and set their volume, 0 to 100."""
+
+    async def volume(self, address: str) -> int | None:
+        """The volume now, or None when the TV does not say."""
+        ...
+
+    async def set_volume(self, address: str, level: int) -> bool:
+        """Set the volume; False when the TV did not take it."""
+        ...
+
+    async def set_mute(self, address: str, *, on: bool) -> bool:
+        """Mute or unmute; False when the TV did not take it."""
+        ...

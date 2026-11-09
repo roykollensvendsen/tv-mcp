@@ -61,6 +61,7 @@ and `garage_confirm`.
 | `tv_power_confirm` | `tv_power_confirm(token)`: switches, after the owner's yes. On: the power key when the TV still listens (standby or Art Mode), otherwise Wake-on-LAN. Off: on the Frame, the power key held for three seconds, since a short press only goes to Art Mode | the token works once, expires after 30 s, and only the latest question's counts; refused when the TV changed since the question |
 | `tv_confirm` | carries out the one action the token names | the token is used once and expires after a minute |
 | `tv_open_app` | `tv_open_app(app, tv)`: opens an app the driver knows by name (on Samsung: Jellyfin, Netflix, YouTube; NRK TV once its id is read from a real set). Part of the opt-in `apps` feature, with `tv_close_app` | only apps the driver knows; never on a hands-off TV; never switches a TV on |
+| sound | `tv_control` with `mute`, `unmute` or `volume` (a level 0-100, or up and down with `relative`). Samsung: the standard UPnP volume service on port 9197, which needs no pairing. Chromecast: its own volume, which the TV's volume then scales | never louder than 50 out of 100, said when capped; never on a hands-off TV |
 | `tv_scene` | `tv_scene(tv, minutes=2)`: the title, how far in, the subtitle lines within that many minutes either side (at most 1200 characters, those nearest kept) and up to 15 of the cast as character: actor, so the voice can say what is happening or who is likely speaking. A track for the hard of hearing is preferred, since it names who speaks. The opt-in `scene` feature | only reads; never on a hands-off TV; the voice sums the lines up rather than reading them out |
 | `tv_key` | one remote key: play, pause, back, home, arrows, OK | no power key; that goes through `tv_power_*` |
 | `tv_volume` | up, down or mute | at most five steps per call |
@@ -276,7 +277,7 @@ Without that list, the owner gets the small default set: `status` today, then
 `media` (search and play) once it exists. `setup`, `power` and anything extra
 are opt-in. Tool descriptions are kept to one line.
 `tests/test_context_budget.py` holds the default set to a fixed number of
-tools and characters (4 tools and 1360 characters today: status, search, play (from where it stopped, or from the start) and pause/resume/stop/seek, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
+tools and characters (4 tools and 1511 characters today: status, search, play (from where it stopped, or from the start) and pause/resume/stop/seek/mute/unmute/volume, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
 either does it on purpose, in its own pull request.
 
 The repository stays private until the owner decides otherwise. It is written

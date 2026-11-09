@@ -15,7 +15,7 @@ from tv_mcp.simulator import simulated_service
 
 #: The default set's limits. Raise one only on purpose.
 MAX_TOOLS = 4
-MAX_CHARACTERS = 1360
+MAX_CHARACTERS = 1511
 
 
 def _cost(server):

@@ -21,19 +21,23 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
         _register_films(server, service, simulated)
 
     @server.tool(
-        description="Pause, resume, stop or seek on a TV; seek to seconds, or skip them if relative."
+        description="Pause, resume, stop, seek, mute, unmute or volume on a TV; seek to seconds,"
+        " volume to level 0-100, by them if relative."
     )
     async def tv_control(
-        command: Literal["pause", "resume", "stop", "seek"],
+        command: Literal["pause", "resume", "stop", "seek", "mute", "unmute", "volume"],
         tv: str,
         seconds: int | None = None,
         relative: bool = False,  # noqa: FBT001, FBT002
+        level: int | None = None,
     ) -> dict[str, Any]:
         if command == "seek":
             if seconds is None:
                 answer = {"outcome": "refused", "say": "Say where to go, or how far to skip."}
             else:
                 answer = await service.seek(tv, seconds, relative=relative)
+        elif command in {"mute", "unmute", "volume"}:
+            answer = await service.sound(command, tv, level=level, relative=relative)
         else:
             answer = await service.control(command, tv)
         return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}

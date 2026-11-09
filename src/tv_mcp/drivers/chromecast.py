@@ -136,6 +136,18 @@ class Chromecast:
         login = await self._login(address)
         return login is not None and await self._send(address, play_message(login, item, start))
 
+    async def volume(self, address: str) -> int | None:
+        """The Chromecast's own volume, 0 to 100."""
+        return await asyncio.to_thread(_sound_blocking, address, None, None)
+
+    async def set_volume(self, address: str, level: int) -> bool:
+        """Set the Chromecast's own volume; the TV's volume stays as it is."""
+        return await asyncio.to_thread(_sound_blocking, address, level, None) is not None
+
+    async def set_mute(self, address: str, *, on: bool) -> bool:
+        """Mute or unmute the Chromecast."""
+        return await asyncio.to_thread(_sound_blocking, address, None, on) is not None
+
     async def youtube_screen(self, address: str) -> str | None:
         """Open YouTube on the Chromecast and give its screen id."""
         return await asyncio.to_thread(_youtube_screen_blocking, address)
@@ -291,3 +303,22 @@ def _youtube_screen_blocking(address: str) -> str | None:  # pragma: no cover - 
     except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
         _connections.pop(address, None)
     return None
+
+
+def _sound_blocking(address: str, level: int | None, mute: bool | None) -> int | None:  # noqa: FBT001  # pragma: no cover - a real device
+    """Set the level or the mute when given, and give the volume, 0 to 100; None when it did not answer."""
+    try:
+        import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415 - the optional chromecast extra
+    except ImportError:
+        return None
+    try:
+        cast, _, _ = _connection(address)
+        if level is not None:
+            cast.set_volume(level / 100, timeout=5)
+        if mute is not None:
+            cast.set_volume_muted(mute, timeout=5)
+        status = cast.status
+        return round(status.volume_level * 100) if status is not None else None
+    except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
+        _connections.pop(address, None)
+        return None

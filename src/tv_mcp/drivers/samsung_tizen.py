@@ -59,6 +59,8 @@ def _send_wake(mac: str) -> None:  # pragma: no cover - sends to the network
 #: Tizen version by model year, from Samsung's release history.
 TIZEN_BY_YEAR = {2020: "5.5", 2021: "6.0", 2022: "6.5", 2023: "7.0", 2024: "8.0", 2025: "9.0"}
 TIMEOUT = 3.0
+#: The standard UPnP service the TV takes volume and mute through, on port 9197.
+RENDERING = "urn:schemas-upnp-org:service:RenderingControl:1"
 #: Where a YouTube remote says it comes from; the TV's DIAL answers no one else.
 YOUTUBE_ORIGIN = "https://www.youtube.com"
 #: How many seconds to give YouTube to start and announce its screen.
@@ -167,6 +169,42 @@ class SamsungTizen:
             if found := re.search(r"<screenId>([^<]+)</screenId>", response.text):
                 return found.group(1)
         return None
+
+    async def _rendering(self, address: str, action: str, arguments: str = "") -> str | None:
+        """Call `action` on the TV's standard UPnP volume service; None when it does not answer."""
+        body = (
+            '<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+            f'<u:{action} xmlns:u="{RENDERING}"><InstanceID>0</InstanceID><Channel>Master</Channel>'
+            f"{arguments}</u:{action}></s:Body></s:Envelope>"
+        )
+        headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPACTION": f'"{RENDERING}#{action}"'}
+        try:
+            response = await self._client.post(
+                f"http://{address}:9197/upnp/control/RenderingControl1",
+                content=body,
+                headers=headers,
+                timeout=TIMEOUT,
+            )
+        except httpx.HTTPError:
+            return None
+        return response.text if response.is_success else None
+
+    async def volume(self, address: str) -> int | None:
+        """The TV's volume now, 0 to 100."""
+        answer = await self._rendering(address, "GetVolume")
+        found = re.search(r"<CurrentVolume>(\d+)</CurrentVolume>", answer or "")
+        return int(found.group(1)) if found else None
+
+    async def set_volume(self, address: str, level: int) -> bool:
+        """Set the TV's volume, 0 to 100; no pairing is needed for this."""
+        return (
+            await self._rendering(address, "SetVolume", f"<DesiredVolume>{level}</DesiredVolume>") is not None
+        )
+
+    async def set_mute(self, address: str, *, on: bool) -> bool:
+        """Mute or unmute the TV."""
+        return await self._rendering(address, "SetMute", f"<DesiredMute>{int(on)}</DesiredMute>") is not None
 
     async def close_app(self, address: str, app_id: str) -> bool:
         """Close `app_id` on the TV; no pairing is needed for this.
