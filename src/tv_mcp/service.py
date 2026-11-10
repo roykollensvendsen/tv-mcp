@@ -64,9 +64,9 @@ CAST_LIMIT = 15
 #: claude-voice gives a tool 30 seconds. Work that can take longer is left
 #: running after these many seconds, and the voice is told it is on its way.
 #: How long a scene waits for subtitles that have to be pulled out of the film.
-SUBTITLE_WAIT = 8.0
+SUBTITLE_WAIT = 5.0
 #: How long playing a YouTube video waits for the search and for the screen to play it.
-YOUTUBE_WAIT = 20.0
+YOUTUBE_WAIT = 8.0
 #: How many films' subtitles are kept once pulled out, for the next question.
 SUBTITLES_KEPT = 4
 

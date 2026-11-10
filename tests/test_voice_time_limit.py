@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Each tool answers within the time the voice gives it.
+"""Each tool answers within the time the voice gives it, and finishes soon after.
 
 claude-voice gives a plugin tool 30 seconds. A tool still waiting after that is
 cut off, and the voice hears only "MCP tool call failed", with nothing to say
@@ -14,11 +14,11 @@ it is on its way rather than cut off.
 
 import pytest
 
-from tv_mcp import power, service
+from tv_mcp import power, server, service
 from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen
 
-#: How long claude-voice waits for a plugin tool, in seconds.
-VOICE_LIMIT = 30.0
+#: How long the Claude app waits for a tool, in seconds (the plugin standard's rule 3).
+VOICE_LIMIT = 15.0
 #: Room kept for everything not counted: the bridge, quick calls, the network.
 MARGIN = 2.0
 
@@ -52,6 +52,15 @@ LONGEST = {
 }
 
 
+#: How long a tool's work may run on after the voice was told it carries on.
+FINISHED_WITHIN = 30.0
+
+
+def test_a_tools_longest_wait_fits_in_the_voices_time():
+    # Every tool answers by server.ANSWER_WITHIN; slower work carries on and says so.
+    assert server.ANSWER_WITHIN + MARGIN <= VOICE_LIMIT
+
+
 @pytest.mark.parametrize("seconds", LONGEST.values(), ids=LONGEST.keys())
-def test_a_tools_longest_wait_fits_in_the_voices_time(seconds):
-    assert seconds + MARGIN <= VOICE_LIMIT
+def test_a_tools_longest_path_finishes_within_half_a_minute(seconds):
+    assert seconds <= FINISHED_WITHIN
