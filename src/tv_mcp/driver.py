@@ -190,6 +190,8 @@ class Playing:
     position: float | None = None  # seconds in
     runtime: float | None = None  # seconds long
     paused: bool = False
+    #: Apps that run but are not on the screen, by name.
+    behind: tuple[str, ...] = ()
 
 
 #: What a player says to a command: done, the app cannot do it, or no answer.

@@ -220,23 +220,38 @@ class SamsungTizen:
         """Mute or unmute the TV."""
         return await self._rendering(address, "SetMute", f"<DesiredMute>{int(on)}</DesiredMute>") is not None
 
-    async def _running(self, address: str) -> str | None:
-        """The spoken name of the known app that runs on the TV, or None."""
-        for name, app_id in self.apps.items():
+    async def _app_state(self, address: str, app_id: str) -> dict[str, Any]:
+        """What the TV says of one app; asked once more when it drops the connection."""
+        url = f"https://{address}:8002/api/v2/applications/{app_id}"
+        for last in (False, True):
             try:
-                state = await self._tls.get(
-                    f"https://{address}:8002/api/v2/applications/{app_id}", timeout=TIMEOUT
-                )
-                if state.is_success and state.json().get("visible") is True:
-                    return name
+                state = await self._tls.get(url, timeout=TIMEOUT)
+            except httpx.RemoteProtocolError:
+                # 2026-11-10: The Frame drops a reused connection now and then; a new one answers.
+                if last:
+                    return {}
+                continue
             except (httpx.HTTPError, ValueError):
-                continue  # one app not answering says nothing about the others
-        return None
+                return {}  # one app not answering says nothing about the others
+            try:
+                return state.json() if state.is_success else {}
+            except ValueError:
+                return {}
+        return {}
 
     async def playing(self, address: str) -> Playing | None:
-        """The app in front, by name; the TV does not say what that app plays or how far in."""
-        app = await self._running(address)
-        return Playing(app=APP_NAMES.get(app, app)) if app else None
+        """The app in front, by name, and the known apps running behind it.
+
+        The TV does not say what an app plays or how far in.
+        """
+        front, behind = None, []
+        for name, app_id in self.apps.items():
+            state = await self._app_state(address, app_id)
+            if state.get("visible") is True:
+                front = APP_NAMES.get(name, name)
+            elif state.get("running") is True:
+                behind.append(APP_NAMES.get(name, name))
+        return Playing(app=front, behind=tuple(behind)) if front or behind else None
 
     async def player(self, tv: Tv, command: str, seconds: float | None = None) -> str:  # noqa: ARG002 - seek is refused
         """Pause, resume or stop with the remote's media keys, which most apps take; seek is not a key."""
