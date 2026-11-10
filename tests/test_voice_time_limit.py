@@ -23,11 +23,10 @@ VOICE_LIMIT = 15.0
 MARGIN = 2.0
 
 LONGEST = {
-    "power on, a TV before Tizen": samsung_legacy.STANDBY_WAIT + power.SETTLE,
-    "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT
-    + chromecast.START_TIMEOUT
-    + power.SETTLE,
-    "power off, a TV before Tizen": samsung_legacy.ANSWER_WAIT + power.SETTLE,
+    # The switch and the watching after it share one deadline; only the look first is outside it.
+    "power on, a TV before Tizen": 2 * samsung_legacy.REACH_WAIT + power.CONFIRM_WITHIN,
+    "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT + power.CONFIRM_WITHIN,
+    "power off, a TV before Tizen": 2 * samsung_legacy.REACH_WAIT + power.CONFIRM_WITHIN,
     "play, opening Jellyfin first": samsung_tizen.TIMEOUT + service.OPEN_WAIT + jellyfin.TIMEOUT,
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
