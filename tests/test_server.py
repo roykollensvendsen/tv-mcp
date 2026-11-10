@@ -61,3 +61,10 @@ def test_tv_play_starts_a_new_hope_on_the_frame():
     )
     assert answer["outcome"] == "playing"
     assert service.library.played == [("sim-session", "sim-4")]
+
+
+def test_every_simulated_answer_says_simulated_first():
+    # The plugin standard's rule 11: a change tried by voice is never taken for the real thing.
+    server = build_server(simulated_service(), simulated=True)
+    answer = asyncio.run(server.call_tool("tv_status", {})).structured_content
+    assert answer["say"].startswith("Simulated: ")
