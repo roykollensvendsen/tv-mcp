@@ -21,6 +21,7 @@ from tv_mcp.driver import (
     ChangesInput,
     HasPlayer,
     HasSound,
+    ReadsArtMode,
     ReadsInput,
     ShowsYouTube,
 )
@@ -78,7 +79,7 @@ WAIT_WITHIN = 10.0
 #: How long status waits to hear which input a TV shows, before saying what it knows.
 INPUT_READ_WAIT = 3.0
 #: The states in which a TV's own screen is off.
-SCREEN_OFF = {"off", "standby", "standby or art mode", UNREACHABLE}
+SCREEN_OFF = {"off", "standby", "standby or art mode", "showing art", UNREACHABLE}
 
 
 class TvService:
@@ -246,6 +247,8 @@ class TvService:
                 await self._add_sound(tv, report)
             await self._add_screen(tv, report)
             if not tv.hands_off:
+                await self._add_art(tv, report)
+            if not tv.hands_off:
                 await self._add_input(tv, report)
         return reports
 
@@ -274,6 +277,15 @@ class TvService:
                 break
             await self._sleep(1.0)
         return {"reached": False, "tvs": reports}
+
+    async def _add_art(self, tv: Tv, report: dict[str, Any]) -> None:
+        """Say whether a Frame in "standby or art mode" shows art, when it can tell."""
+        driver = self.drivers.get(tv.driver)
+        if report["state"] != "standby or art mode" or not isinstance(driver, ReadsArtMode):
+            return
+        art = await driver.art_mode(tv)
+        if art is not None:
+            report["state"] = "showing art" if art else "standby"
 
     async def _add_input(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add which input the TV shows, when it can say and is on."""

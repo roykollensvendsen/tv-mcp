@@ -121,6 +121,15 @@ class InputSent:
 
 
 @runtime_checkable
+class ReadsArtMode(Protocol):
+    """A driver that can tell whether its TV shows art, as The Frame does."""
+
+    async def art_mode(self, tv: Tv) -> bool | None:
+        """Whether `tv` shows art; None when it cannot tell. Only ever read, never set."""
+        ...
+
+
+@runtime_checkable
 class ReadsInput(Protocol):
     """A driver that can tell which input its TV shows."""
 
