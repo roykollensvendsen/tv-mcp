@@ -34,17 +34,19 @@ LONGEST = {
     ),
     "change input, a TV before Tizen, by its keys when it lists no inputs": (
         samsung_tizen.TIMEOUT
+        + 2 * samsung_legacy.REACH_WAIT  # whether its screen is on: two ports
         + samsung_legacy.FIND_WAIT
         + samsung_legacy.AGENT_WAIT
         + samsung_legacy.ANSWER_WAIT
     ),
     "change input, a TV before Tizen, picked and read back": (
         samsung_tizen.TIMEOUT
+        + 2 * samsung_legacy.REACH_WAIT  # whether its screen is on: two ports
         + samsung_legacy.FIND_WAIT
         + 3 * samsung_legacy.AGENT_WAIT
         + samsung_legacy.INPUT_SETTLE
     ),
-    "change input, by the paired remote": samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
+    "change input, by the paired remote": 2 * samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (
         jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT

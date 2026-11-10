@@ -37,6 +37,8 @@ NAME = "tv-mcp"
 ANSWER_WAIT = 15.0
 #: How long a TV in standby gets to answer; one that is let in answers at once.
 STANDBY_WAIT = 3.0
+#: How long one of the TV's ports gets to answer, when asking whether it is on.
+REACH_WAIT = 2.0
 #: Samsung's own service for inputs, and how long each call to it gets.
 AGENT = "urn:samsung.com:service:MainTVAgent2:1"
 AGENT_WAIT = 3.0
@@ -126,7 +128,7 @@ def _send_wake(mac: str, address: str) -> None:  # pragma: no cover - sends to t
 
 async def _reach(address: str, port: int) -> bool:  # pragma: no cover - the network
     try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), 2.0)
+        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), REACH_WAIT)
     except (OSError, TimeoutError):
         return False
     writer.close()

@@ -25,14 +25,16 @@ class InputTv:
     key = "samsung-tizen"
     ssdp_target = "x"
 
-    def __init__(self, *, answers=True):
-        self.answers, self.shown = answers, []
+    def __init__(self, *, answers=True, power="on"):
+        self.answers, self.power, self.shown = answers, power, []
 
     def recognises(self, announcement):
         return False
 
     async def read_info(self, address):
-        return None
+        if self.power is None:
+            return None
+        return TvInfo(name=None, model=None, year=None, platform=None, power=self.power)
 
     async def show_input(self, tv, source):
         self.shown.append((tv.address, source))
@@ -104,6 +106,25 @@ def test_a_tv_with_no_way_to_change_input_is_refused():
     answer = _show(
         _service(Cast(), tvs=(replace(GARAGE, power_driver=None, power_address=None),)), "hdmi1", "the garage"
     )
+    assert answer["outcome"] == "refused"
+
+
+def test_an_input_is_changed_only_while_the_screen_is_on():
+    # A remote key sent to a TV in standby may wake it, and a TV must never come
+    # on by itself at night. So a TV that is off, or cannot say, is not sent a key.
+    for power in ("standby", "unknown", None):
+        driver = InputTv(power=power)
+        answer = _show(_service(driver), "hdmi1", "the living room")
+        assert driver.shown == [], power
+        assert answer["outcome"] == "refused", power
+        assert "on" in answer["say"], power
+
+
+def test_a_tv_shown_through_another_device_is_asked_by_its_power_driver_whether_it_is_on():
+    legacy = InputTv(power="standby")
+    legacy.key = "samsung-legacy"
+    answer = _show(_service(Cast(), legacy, tvs=(GARAGE,)), "hdmi1", "the garage")
+    assert legacy.shown == []
     assert answer["outcome"] == "refused"
 
 
