@@ -14,7 +14,7 @@ for one turns green, and must then lose its mark, once its waits are cut.
 import pytest
 
 from tv_mcp import power, service
-from tv_mcp.drivers import jellyfin, samsung_legacy, samsung_tizen, youtube
+from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen, youtube
 
 #: How long claude-voice waits for a plugin tool, in seconds.
 VOICE_LIMIT = 30.0
@@ -25,6 +25,9 @@ OVER = pytest.mark.xfail(strict=True, reason="known to run past the voice's limi
 
 LONGEST = {
     "power on, a TV before Tizen": samsung_legacy.STANDBY_WAIT + power.SETTLE,
+    "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT
+    + chromecast.START_TIMEOUT
+    + power.SETTLE,
     "power off, a TV before Tizen": samsung_legacy.ANSWER_WAIT + power.SETTLE,
     "play, opening Jellyfin first": samsung_tizen.TIMEOUT + service.OPEN_WAIT + jellyfin.TIMEOUT,
     "close an app, by the home key when refused": (

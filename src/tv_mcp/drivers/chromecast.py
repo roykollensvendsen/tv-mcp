@@ -6,8 +6,9 @@ lets the server transcode what the Chromecast cannot play, and reports how far
 it got, so resuming keeps working. The receiver needs a login that belongs to
 a user: the server's API key belongs to none, and the receiver fails with it.
 
-A Chromecast cannot switch its TV off. Starting the receiver may switch the
-TV on and to the Chromecast's input, over HDMI-CEC (Samsung's Anynet+).
+A Chromecast cannot switch its TV off. Starting an app on it asks the TV to
+switch on and to the Chromecast's input, over HDMI-CEC (Samsung's Anynet+), and
+HDMI tells it whether the TV is in standby: ``wake_screen`` and ``screen_on``.
 
 Talking to the Chromecast needs PyChromecast (MIT), the ``chromecast`` extra.
 """
@@ -15,6 +16,7 @@ Talking to the Chromecast needs PyChromecast (MIT), the ``chromecast`` extra.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import threading
 import time
@@ -37,6 +39,13 @@ JELLYFIN_RECEIVER = "F007D354"
 NAMESPACE = "urn:x-cast:com.connectsdk"
 TICKS = 10_000_000
 TIMEOUT = 3.0
+
+#: Google's own receiver, started only to wake the TV, and how long it is left open for that.
+WAKER = "CC1AD845"
+WAKE_HOLD = 5.0
+#: How long the Chromecast gets to connect, and to start an app.
+CONNECT_TIMEOUT = 10.0
+START_TIMEOUT = 5.0
 
 #: The receiver's name for each command in tv_mcp.media.COMMANDS.
 RECEIVER_COMMANDS = {"pause": "Pause", "resume": "Unpause", "stop": "Stop"}
@@ -136,6 +145,14 @@ class Chromecast:
         """Start `item` on the Chromecast; False without a user login, or when it does not start."""
         login = await self._login(address)
         return login is not None and await self._send(address, play_message(login, item, start))
+
+    async def wake_screen(self, address: str) -> bool:
+        """Start an app for a moment, which asks the TV over HDMI to switch on."""
+        return await asyncio.to_thread(_wake_blocking, address)
+
+    async def screen_on(self, address: str) -> bool | None:
+        """Whether the TV is on, from what HDMI tells the Chromecast."""
+        return await asyncio.to_thread(_screen_blocking, address)
 
     async def playing(self, address: str) -> Playing | None:
         """What plays on the Chromecast, in whatever app: Jellyfin, YouTube or another."""
@@ -251,7 +268,7 @@ def _connection(address: str) -> tuple[Any, Any, threading.Event]:  # pragma: no
                 return True
 
         cast = pychromecast.get_chromecast_from_host((address, 8009, _uuid(address), None, None))
-        cast.wait(timeout=10)
+        cast.wait(timeout=CONNECT_TIMEOUT)
         receiver = Receiver()
         cast.register_handler(receiver)
         _connections[address] = (cast, receiver, playing)
@@ -349,6 +366,44 @@ def _sound_blocking(address: str, level: int | None, mute: bool | None) -> int |
     except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
         _connections.pop(address, None)
         return None
+
+
+def _wake_blocking(address: str) -> bool:  # pragma: no cover - a real device
+    """Start the waker app, and close it again a moment later, without waiting for that."""
+    try:
+        import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415 - the optional chromecast extra
+    except ImportError:
+        return False
+    try:
+        cast, _, _ = _connection(address)
+        cast.start_app(WAKER, timeout=START_TIMEOUT)
+    except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
+        _connections.pop(address, None)
+        return False
+
+    def close() -> None:
+        if cast.app_id == WAKER:
+            with contextlib.suppress(pychromecast.error.PyChromecastError, OSError, TimeoutError):
+                cast.quit_app(timeout=START_TIMEOUT)
+
+    threading.Timer(WAKE_HOLD, close).start()
+    return True
+
+
+def _screen_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
+    """True when HDMI says the TV is on, False in standby, None when the Chromecast does not know."""
+    try:
+        import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415 - the optional chromecast extra
+    except ImportError:
+        return None
+    try:
+        cast, _, _ = _connection(address)
+    except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
+        return None
+    status = cast.status
+    if status is None or status.is_stand_by is None:
+        return None
+    return not status.is_stand_by
 
 
 #: What the Chromecast shows when no app is open.

@@ -105,6 +105,19 @@ class Switches(Protocol):
 
 
 @runtime_checkable
+class WakesScreen(Protocol):
+    """A device in a TV, such as a Chromecast, that wakes the TV over HDMI (HDMI-CEC)."""
+
+    async def wake_screen(self, address: str) -> bool:
+        """Ask the TV it is in to switch on; False when the device did not answer."""
+        ...
+
+    async def screen_on(self, address: str) -> bool | None:
+        """Whether that TV is on, as HDMI tells the device; None when it does not know."""
+        ...
+
+
+@runtime_checkable
 class ShowsYouTube(Protocol):
     """A driver whose TVs can show YouTube."""
 

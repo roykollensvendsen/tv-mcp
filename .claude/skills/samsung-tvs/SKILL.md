@@ -82,8 +82,13 @@ first time. Seen 2026-11-09: in standby only 55000 answers; while on, 55000,
 pressed "allow", switching it off by voice worked (2026-11-09). Switching it
 on from standby failed: the wake packet had gone to 255.255.255.255, which a
 machine on two networks sends out of only one, so it never reached the TV's
-network. It now goes to the TV's own network as well. Whether a 2012 set
-wakes over Wi-Fi at all is still not known.
+network. It now goes to the TV's own network as well. On 2026-11-10 it still
+did not wake, over Wi-Fi or over a cable to its wired MAC, after the power
+button or the remote's off: on a cable it is silent on the network in
+standby. It does wake over HDMI-CEC from the Chromecast in it, so it is set
+up with `on = "cec"` (see the `chromecast` skill). On a cable its address and
+MAC differ from Wi-Fi's, and it takes about half a minute after switching on
+to answer on the network.
 
 ## Adding a family
 

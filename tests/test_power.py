@@ -204,3 +204,80 @@ def test_a_switch_that_does_not_take_is_answered_within_the_voices_time_limit():
     assert answer["outcome"] == "unverified"
     assert clock.now - started <= SETTLE
     assert SETTLE <= 15
+
+
+class CastWithCec:
+    """A Chromecast in a TV, which wakes the TV over HDMI and can tell when its screen is on."""
+
+    key = "chromecast"
+    ssdp_target = "y"
+
+    def __init__(self, tv_driver):
+        self.tv_driver, self.woken = tv_driver, []
+
+    def recognises(self, announcement):
+        return False
+
+    async def read_info(self, address):
+        return None
+
+    async def wake_screen(self, address):
+        self.woken.append(address)
+        self.tv_driver.power = "on"
+        return True
+
+    async def screen_on(self, address):
+        return self.tv_driver.power == "on"
+
+
+GARAGE = Tv(
+    key="garage",
+    names=("the garage",),
+    address="192.0.2.20",
+    driver="chromecast",
+    power_driver="samsung-tizen",
+    power_address="192.0.2.21",
+    power_on="cec",
+)
+
+
+def _power_with_cast(tv_driver, cast):
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    return PowerService(service, clock=Clock(), new_token=lambda: "token-0", sleep=_no_wait)
+
+
+def test_a_tv_set_to_wake_by_cec_is_switched_on_through_the_device_in_it():
+    # 2026-11-10: the 2012 garage TV ignores wake packets, but wakes when its Chromecast starts an app.
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+    power = _power_with_cast(tv_driver, cast)
+    _run(power.request("on", "the garage"))
+    answer = _run(power.confirm("token-0"))
+    assert cast.woken == ["192.0.2.20"]
+    assert tv_driver.switched == []
+    assert answer["outcome"] == "done", answer
+
+
+def test_a_tv_set_to_wake_by_cec_is_still_switched_off_through_its_power_driver():
+    tv_driver = PowerDriver("on")
+    cast = CastWithCec(tv_driver)
+    power = _power_with_cast(tv_driver, cast)
+    _run(power.request("off", "the garage"))
+    _run(power.confirm("token-0"))
+    assert tv_driver.switched == [("garage", False)]
+    assert cast.woken == []
+
+
+def test_the_screen_counts_as_on_when_the_device_in_it_says_so_before_the_tv_answers():
+    # The garage TV takes most of a minute to answer on the network; its Chromecast knows sooner.
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+
+    async def lit(address):
+        return True
+
+    cast.screen_on = lit
+    power = _power_with_cast(tv_driver, cast)
+    assert _run(power.request("on", "the garage"))["outcome"] == "refused"

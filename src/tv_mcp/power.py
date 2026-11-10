@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
+from tv_mcp.driver import WakesScreen
 from tv_mcp.settings import AmbiguousTvError, UnknownTvError, find_tv
 
 if TYPE_CHECKING:
@@ -61,8 +62,17 @@ class PowerService:
         self._service, self._clock, self._new_token, self._sleep = service, clock, new_token, sleep
         self._pending: _Pending | None = None
 
+    def _waker(self, tv: Tv) -> WakesScreen | None:
+        """The device in `tv` that switches it on over HDMI, when it is set up to."""
+        driver = self._service.drivers.get(tv.driver) if tv.power_on == "cec" else None
+        return driver if isinstance(driver, WakesScreen) else None
+
     async def _state(self, tv: Tv) -> str | None:
         """'on', 'off', or None when it is not known."""
+        waker = self._waker(tv)
+        # The device in the TV knows it is on well before the TV answers on the network.
+        if waker is not None and tv.address and await waker.screen_on(tv.address):
+            return "on"
         if tv.power_driver:
             driver = self._service.drivers.get(tv.power_driver)
             info = await driver.read_info(tv.power_address or "") if driver else None
@@ -77,6 +87,15 @@ class PowerService:
     def _switcher(self, tv: Tv) -> Switches | None:
         driver = self._service.drivers.get(tv.power_driver or tv.driver)
         return cast("Switches", driver) if callable(getattr(driver, "switch", None)) else None
+
+    async def _switch(self, tv: Tv, *, on: bool) -> bool:
+        """On through the device in the TV when it is set to wake by HDMI; otherwise by its switcher."""
+        waker = self._waker(tv)
+        if on and waker is not None and tv.address:
+            return await waker.wake_screen(tv.address)
+        switcher = self._switcher(tv)
+        target = replace(tv, address=tv.power_address) if tv.power_driver else tv
+        return switcher is not None and await switcher.switch(target, on=on)
 
     async def request(self, state: str, name: str) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per rule
         """A question to read aloud, and its token; nothing is switched."""
@@ -116,11 +135,7 @@ class PowerService:
         # RULE: a switch is refused when the TV changed since the question
         if await self._state(pending.tv) == wanted:
             return _refused(f"{pending.tv.spoken.capitalize()} is already {wanted}; nothing was sent.")
-        switcher = self._switcher(pending.tv)
-        target = (
-            replace(pending.tv, address=pending.tv.power_address) if pending.tv.power_driver else pending.tv
-        )
-        if switcher is None or not await switcher.switch(target, on=pending.on):
+        if not await self._switch(pending.tv, on=pending.on):
             return _refused(f"{pending.tv.spoken.capitalize()} did not answer.")
         watched_from = self._clock()
         for _ in range(SETTLE):

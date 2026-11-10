@@ -49,11 +49,16 @@ Tested on a Chromecast ("Garasje") in a 2012 Samsung UE40ES6715, 2026-11-09.
 9. **Count a cast as playing only when the receiver says so**: its playback
    report names the item and `CanSeek` is true. Before that it may name the
    item while nothing plays.
-10. **Power.** Starting the receiver may switch the TV on and to the
-   Chromecast's input over HDMI-CEC (Samsung: Anynet+), not yet tested. A
-   Chromecast can never switch its TV off; that needs the TV's own driver.
-   tv-mcp reports a Chromecast as "reachable", never "on", because it cannot
-   tell whether the screen is on.
+10. **Power.** Starting any app on the Chromecast switches the TV on over
+   HDMI-CEC (Samsung: Anynet+, switched on for the Chromecast's HDMI input).
+   Seen 2026-11-10 on the 2012 garage Samsung, which ignores wake packets:
+   with Anynet+ on HDMI1 it woke when Google's own receiver (`CC1AD845`)
+   started. `power = { ..., on = "cec" }` in the settings switches such a TV
+   on this way (`wake_screen`); off still goes through the TV's own driver,
+   since a Chromecast can never switch its TV off. HDMI also tells the
+   Chromecast whether the TV is in standby (`is_stand_by` in its status,
+   `screen_on`); that was seen to read True in standby, and is read as on long
+   before the TV itself answers on the network (about a minute on that set).
 
 ## Setting one up
 

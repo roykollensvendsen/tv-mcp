@@ -48,10 +48,10 @@ def test_the_power_target_is_read_from_the_settings(tmp_path):
     file = tmp_path / "config.toml"
     file.write_text(
         '[tvs.garage]\nnames = ["garage"]\ndriver = "chromecast"\naddress = "192.0.2.20"\n'
-        'power = { driver = "samsung-legacy", address = "192.0.2.21" }\n'
+        'power = { driver = "samsung-legacy", address = "192.0.2.21", on = "cec" }\n'
     )
     [tv] = load_settings(file).tvs
-    assert (tv.power_driver, tv.power_address) == ("samsung-legacy", "192.0.2.21")
+    assert (tv.power_driver, tv.power_address, tv.power_on) == ("samsung-legacy", "192.0.2.21", "cec")
 
 
 class Legacy:
