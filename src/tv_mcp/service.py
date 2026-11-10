@@ -172,7 +172,7 @@ class TvService:
         address = tv.address or ""
         playing = await driver.playing(address)
         if playing is None:
-            return _refused(f"Nothing is playing on {tv.spoken}.")
+            return _refused(f"Nothing is playing on {tv.spoken}. Start something first.")
         target = None
         if command == "seek":
             wanted = (playing.position or 0.0) + (seconds or 0.0) if relative else (seconds or 0.0)
@@ -180,9 +180,9 @@ class TvService:
         answer = await driver.player(tv, command, target)
         app = playing.app or "The app"
         if answer == UNSUPPORTED:
-            return _refused(f"{app} on {tv.spoken} cannot {command}.")
+            return _refused(f"{app} on {tv.spoken} cannot {command}. Try the TV's own remote.")
         if answer != DONE:
-            return _refused(f"{_capital(tv.spoken)} did not answer.")
+            return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
         if target is not None:
             self._moved[tv.key] = (target, self._clock())
             title = playing.title or "it"
@@ -286,7 +286,10 @@ class TvService:
             return _refused(str(refusal))
         # RULE: a hands-off TV is never played on or controlled
         if tv.hands_off:
-            return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
+            return _refused(
+                f"{tv.spoken} is left alone; nothing is sent to it."
+                " Remove hands_off in the settings to use it."
+            )
         return tv
 
     async def search_youtube(self, words: str) -> dict[str, Any]:
@@ -295,7 +298,7 @@ class TvService:
             return {"items": [], "say": NO_YOUTUBE}
         found = (await self.videos.search(words))[:YOUTUBE_RESULTS]
         if not found:
-            return {"items": [], "say": f"Found nothing on YouTube for {words!r}."}
+            return {"items": [], "say": f"Found nothing on YouTube for {words!r}. Try other words."}
         items = [_video(v) for v in found]
         listed = "; ".join(
             f"{i['title']}"
@@ -314,7 +317,7 @@ class TvService:
             return tv
         driver = self.drivers.get(tv.driver)
         if not isinstance(driver, ShowsYouTube):
-            return _refused(f"{_capital(tv.spoken)} cannot show YouTube from here.")
+            return _refused(f"{_capital(tv.spoken)} cannot show YouTube from here. Try another TV.")
         if wrong := await self._itself(tv):
             return wrong
         clock = asyncio.get_running_loop().time
@@ -322,9 +325,11 @@ class TvService:
         try:
             video = await asyncio.wait_for(self._video(words), YOUTUBE_WAIT)
         except TimeoutError:
-            return _refused(f"YouTube did not answer the search for {words!r} in time.")
+            return _refused(
+                f"YouTube did not answer the search for {words!r} in time. Try again in a moment."
+            )
         if video is None:
-            return _refused(f"Found nothing on YouTube for {words!r}.")
+            return _refused(f"Found nothing on YouTube for {words!r}. Try other words.")
         starting = asyncio.ensure_future(self._open_and_start(driver, tv, video))
         self._running.add(starting)
         starting.add_done_callback(self._running.discard)
@@ -362,7 +367,7 @@ class TvService:
         except Exception:  # noqa: BLE001 - whatever the TV does, the voice gets a sentence
             screen = None
         if screen is None:
-            return _refused(f"YouTube did not open on {tv.spoken}.")
+            return _refused(f"YouTube did not open on {tv.spoken}. Check that it is on, and try again.")
         return await self._start_video(tv, screen, video)
 
     async def _start_video(self, tv: Tv, screen: str, video: Video) -> dict[str, Any] | None:
@@ -378,7 +383,10 @@ class TvService:
                 "profile, which takes no videos sent from here. Pick a profile on the TV, and ask again."
             )
         if not started:
-            return _refused(f"YouTube opened on {tv.spoken}, but {video.title} did not start.")
+            return _refused(
+                f"YouTube opened on {tv.spoken}, but {video.title} did not start."
+                " Try again, or pick another video."
+            )
         return None
 
     def _target(self, name: str) -> Tv | dict[str, Any]:
@@ -416,7 +424,10 @@ class TvService:
             return _refused(str(refusal))
         # RULE: a hands-off TV never has an app opened or closed
         if tv.hands_off or not tv.address:
-            return _refused(f"{tv.spoken} is left alone; nothing is sent to it.")
+            return _refused(
+                f"{tv.spoken} is left alone; nothing is sent to it."
+                " Remove hands_off in the settings to use it."
+            )
         driver = self.drivers.get(tv.driver)
         apps: Mapping[str, str] = (
             getattr(driver, "apps", {}) if callable(getattr(driver, method, None)) else {}
@@ -427,7 +438,7 @@ class TvService:
         if app_id is None:
             known = ", ".join(a.capitalize() for a in apps) or "none"
             return _refused(
-                f"I cannot {method.removesuffix('_app')} {app!r} on {tv.spoken}. Apps I know: {known}."
+                f"I cannot {method.removesuffix('_app')} {app!r} on {tv.spoken}. Name one I know: {known}."
             )
         return tv, driver, app_id
 
@@ -451,10 +462,10 @@ class TvService:
         wanted = re.sub(r"[^a-z0-9]", "", source.casefold())
         if wanted not in INPUTS:
             listed = ", ".join(INPUTS.values())
-            return _refused(f"I can show {listed}, not {source!r}.")
+            return _refused(f"I cannot show {source!r}. Choose one of {listed}.")
         found = self._input_driver(tv, ChangesInput)
         if found is None:
-            return _refused(f"{_capital(tv.spoken)} cannot change input from here.")
+            return _refused(f"{_capital(tv.spoken)} cannot change input from here. Use the TV's own remote.")
         if wrong := await self._itself(tv):
             return wrong
         driver, target = found
@@ -482,7 +493,7 @@ class TvService:
         if wrong := await self._itself(tv):
             return wrong
         if not await cast("ClosesApps", driver).close_app(tv.address or "", app_id, tv_key=tv.key):
-            return _refused(f"{tv.spoken} did not close {app}.")
+            return _refused(f"{tv.spoken} did not close {app}. Try again, or close it with the TV's remote.")
         return {"outcome": "done", "say": f"Closed {app} on {tv.spoken}."}
 
     async def _open_jellyfin(self, tv: Tv) -> Session | None:
@@ -500,7 +511,7 @@ class TvService:
     async def control(self, command: str, name: str) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per reason
         """Pause, resume or stop what is playing on the TV called `name`."""
         if command not in COMMANDS:
-            return _refused(f"I can {', '.join(COMMANDS)}; not {command!r}.")
+            return _refused(f"I cannot {command!r}. Choose one of: {', '.join(COMMANDS)}.")
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
@@ -516,11 +527,11 @@ class TvService:
         else:
             session = await self._session(tv)
             if session is None or self.library is None:
-                return _refused(f"Jellyfin is not open on {tv.spoken}.")
+                return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
             await self.library.control(session.id, command)
             sent = True
         if not sent:
-            return _refused(f"{_capital(tv.spoken)} did not answer.")
+            return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
         done = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}[command]
         return {"outcome": "done", "say": f"{done} on {tv.spoken}."}
 
@@ -538,7 +549,7 @@ class TvService:
         assert self.library is not None  # noqa: S101 - _target checked it
         watching = await self._watching(tv)
         if watching is None or watching.item_id is None:
-            return _refused(f"Nothing is playing on {tv.spoken}.")
+            return _refused(f"Nothing is playing on {tv.spoken}. Start something first.")
         try:
             cues = await asyncio.wait_for(
                 asyncio.shield(self._pull_subtitles(watching.item_id)), SUBTITLE_WAIT
@@ -549,7 +560,9 @@ class TvService:
                 "say": f"I am reading the subtitles of {watching.now_playing}. Ask again in half a minute.",
             }
         if not cues:
-            return _refused(f"{watching.now_playing} has no subtitles to go by.")
+            return _refused(
+                f"{watching.now_playing} has no subtitles to go by. Say a time to jump to instead."
+            )
         position = watching.position or 0.0
         found: dict[str, Any] = {}
         if chapters:
@@ -591,23 +604,23 @@ class TvService:
             return tv
         driver = self.drivers.get(tv.driver)
         if not isinstance(driver, HasSound):
-            return _refused(f"I cannot change the sound on {tv.spoken}.")
+            return _refused(f"I cannot change the sound on {tv.spoken}. Use the TV's own remote.")
         if wrong := await self._itself(tv):
             return wrong
         address = tv.address or ""
         if command in {"mute", "unmute"}:
             if not await driver.set_mute(address, on=command == "mute"):
-                return _refused(f"{_capital(tv.spoken)} did not answer.")
+                return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
             return {"outcome": "done", "say": f"{'Muted' if command == 'mute' else 'Unmuted'} {tv.spoken}."}
         if level is None:
             return _refused("Say how loud, or how much louder or quieter.")
         now = await driver.volume(address) if relative else 0
         if now is None:
-            return _refused(f"{_capital(tv.spoken)} did not say its volume.")
+            return _refused(f"{_capital(tv.spoken)} did not say its volume. Say a level instead, such as 20.")
         wanted = now + level if relative else level
         target = max(0, min(wanted, LOUDEST))
         if not await driver.set_volume(address, target):
-            return _refused(f"{_capital(tv.spoken)} did not answer.")
+            return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
         capped = f", at most {LOUDEST}" if wanted > LOUDEST else ""
         return {"outcome": "done", "say": f"Volume {target} on {tv.spoken}{capped}.", "volume": target}
 
@@ -630,17 +643,17 @@ class TvService:
         else:
             watching = await self._watching(tv)
         if watching is None:
-            return _refused(f"Nothing is playing on {tv.spoken}.")
+            return _refused(f"Nothing is playing on {tv.spoken}. Start something first.")
         target = (watching.position or 0.0) + seconds if relative else seconds
         target = max(0.0, min(target, watching.runtime or target))
         caster = self._caster(tv)
         if caster is not None:
             if not await caster.cast_seek(tv.address or "", target):
-                return _refused(f"{_capital(tv.spoken)} did not answer.")
+                return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
         else:
             session = await self._session(tv)
             if session is None:
-                return _refused(f"Jellyfin is not open on {tv.spoken}.")
+                return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
             await self.library.seek(session.id, target)
         self._moved[tv.key] = (target, self._clock())
         return {
@@ -683,7 +696,9 @@ class TvService:
 #: How long play waits, in seconds, for Jellyfin it opened to connect.
 OPEN_WAIT = 15.0
 
-NO_LIBRARY = "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key."
+NO_LIBRARY = (
+    "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key. Add them to play films."
+)
 
 
 def _found(item: MediaItem) -> dict[str, Any]:
@@ -724,7 +739,7 @@ def _words(text: str) -> list[str]:
 def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
     """The id of the one item meant, or a refusal that says what there is."""
     if not found:
-        return _refused(f"Found nothing called {title!r}.")
+        return _refused(f"Found nothing called {title!r}. Try other words, or part of the title.")
     exact = [i for i in found if i.title.casefold() == title.casefold()]
     if len(exact) == 1:
         return exact[0].id
@@ -736,7 +751,10 @@ def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
 
 
 def _another(tv: Tv) -> str:
-    return f"Another TV answers at the address set for {tv.spoken}, so nothing is sent to it."
+    return (
+        f"Another TV answers at the address set for {tv.spoken}, so nothing is sent to it."
+        " Check its address in the settings."
+    )
 
 
 def _known(tv: Tv | None) -> dict[str, Any]:
@@ -751,7 +769,10 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
     """What to say once an input was sent: seen, not seen, or not knowable."""
     if sent.unplugged:
         now = f"; it still shows {sent.shown}" if sent.shown else ""
-        return _refused(f"Nothing is plugged into {sent.said} on {tv.spoken}{now}.")
+        return _refused(
+            f"Nothing is plugged into {sent.said} on {tv.spoken}{now}."
+            " Plug something in, or pick another input."
+        )
     if sent.shown is None:
         return {
             "outcome": "done",
