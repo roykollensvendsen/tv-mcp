@@ -122,3 +122,15 @@ name = "a tool still working at the deadline says it carries on"
 file = "src/tv_mcp/server.py"
 find = '                    answer = await asyncio\.wait_for\(asyncio\.shield\(work\), ANSWER_WITHIN\)'
 replace = 'answer = await asyncio.wait_for(work, ANSWER_WITHIN)'
+
+[[rule]]
+name = "a measure that gets worse fails the check"
+file = "scripts/ratchet.py"
+find = 'if _worse\(metric, base\[metric\], now\[metric\]\) and metric not in allowed:'
+replace = 'if False:'
+
+[[rule]]
+name = "when the levels main kept are missing, the base is measured"
+file = "scripts/ratchet.py"
+find = '^    return measure_base\(\)$'
+replace = 'return {}'

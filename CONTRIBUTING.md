@@ -27,7 +27,12 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -q --cov
 committed --no-merge-commit origin/main..HEAD
+uv run python scripts/ratchet.py check --base origin/main
 ```
+
+The ratchet takes about two minutes, most of it the mutation check, which
+switches every rule off in turn; `--skip-mutation` gives a quick look that keeps
+main's mutation figures.
 
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
@@ -43,6 +48,41 @@ Docker, so it is not one of the lines above. Run the same scan locally with:
 ```
 docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.30.1 detect --source /repo --redact --no-banner
 ```
+
+## The quality ratchet
+
+The gates above pass or fail. None of them notices the code slowly getting
+worse, so the ratchet compares these levels with the ones main has reached:
+
+| Measure | Better is |
+| --- | --- |
+| `coverage`: the share of the source the suite runs, in percent | higher (it may wobble by half a point between machines) |
+| `mutation`: of the rules marked in the source, how many turn their own test red when switched off | higher |
+| `tests`: how many tests pass | higher |
+| `lint_errors`, `type_errors`: what `ruff check .` and `mypy src` find | lower |
+| `cycles`: groups of modules that import each other in a circle when they load | lower |
+| `duplication`: the share of non-blank source lines, in percent, in a block of six or more lines that appears more than once, ignoring indentation | lower |
+| `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it; a new module keeps every function at 15 or below | lower |
+| `test_seconds`: how long the suite takes, against `test_budget` | inside the budget plus its tolerance |
+
+The layers are not a level here: `tests/test_layers.py` already refuses a
+module that imports from the wrong layer, so there is nothing to ratchet.
+
+`scripts/ratchet.py check` fails a change that makes any of them worse than
+main. Main's levels are measured by continuous integration after every merge
+and kept with that run, so a pull request never records them, and merging one
+never makes another stale ([ADR-TM-002](decisions/ADR-TM-002-main-keeps-the-quality-levels.md)).
+When main's levels for that commit are missing, the check measures the commit
+itself, which takes as long again. A change that must make a measure worse
+says so in its pull request, on a line of its own:
+
+<!-- not run: an example line in a pull request -->
+```
+Ratchet-Exception: coverage - the module it covered was deleted
+```
+
+The time budget is a limit, not a level: it is the one thing in `quality.json`,
+and it changes only by hand.
 
 ## How a change is made
 

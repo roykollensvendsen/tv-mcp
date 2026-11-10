@@ -35,7 +35,7 @@ def marked_rules() -> set[str]:
     found = set()
     # The checks this project added count too; the scripts the start-repo
     # skill ships carry rules that skill proves.
-    scripts = [ROOT / "scripts" / n for n in ("no_session_links.py", "private_data_scan.py")]
+    scripts = [ROOT / "scripts" / n for n in ("no_session_links.py", "private_data_scan.py", "ratchet.py")]
     sources = [*(ROOT / "src").rglob("*.py"), *scripts]
     for source in sorted(sources):
         for line in source.read_text().splitlines():
