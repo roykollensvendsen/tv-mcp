@@ -147,6 +147,9 @@ class PowerService:
                 " Ask for the other way if you meant that."
             )
         if not await self._switch(pending.tv, on=pending.on):
+            # Nothing reached the TV, so the yes still stands while the question is fresh.
+            if self._pending is None:
+                self._pending = pending
             return _refused(
                 f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
             )

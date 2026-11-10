@@ -47,12 +47,15 @@ class _Guarded:
             @functools.wraps(tool)
             async def answered(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
                 try:
-                    return await tool(*args, **kwargs)
+                    answer = await tool(*args, **kwargs)
                 except (httpx.HTTPError, OSError, TimeoutError):
-                    say = DROPPED
+                    answer = {"success": False, "outcome": "refused", "say": DROPPED}
                 except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
-                    say = BROKE
-                return {"success": False, "outcome": "refused", "say": say, "simulated": self._simulated}
+                    answer = {"success": False, "outcome": "refused", "say": BROKE}
+                answer.setdefault("simulated", self._simulated)
+                if self._simulated and isinstance(answer.get("say"), str):
+                    answer["say"] = "Simulated: " + answer["say"]
+                return answer
 
             self.names.append(tool.__name__)
             return register(answered)

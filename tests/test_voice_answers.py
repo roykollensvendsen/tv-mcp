@@ -64,7 +64,7 @@ def test_success_is_false_when_nothing_was_done():
 
 def test_the_status_line_names_each_tv_and_its_state():
     say = _call(_server(), "tv_status")["say"]
-    assert say == "The living room is on."
+    assert say == "Simulated: The living room is on."
 
 
 def test_the_instructions_say_never_to_switch_a_tv_on_or_off_without_asking():
