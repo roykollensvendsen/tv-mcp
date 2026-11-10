@@ -3,7 +3,7 @@
 
 import asyncio
 
-from tv_mcp.driver import Playing
+from tv_mcp.driver import Playing, TvInfo
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
 
@@ -23,7 +23,8 @@ class Player:
         return False
 
     async def read_info(self, address):
-        return None
+        # On, so status asks it what plays and how loud it is.
+        return TvInfo(name=None, model=None, year=None, platform=None, power="on")
 
     async def playing(self, address):
         return self.now

@@ -5,6 +5,7 @@ import asyncio
 
 import httpx
 
+from tv_mcp.driver import TvInfo
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
 from tv_mcp.service import LOUDEST, TvService
 from tv_mcp.settings import Settings, Tv
@@ -24,7 +25,8 @@ class Speaker:
         return False
 
     async def read_info(self, address):
-        return None
+        # On, so status asks it what plays and how loud it is.
+        return TvInfo(name=None, model=None, year=None, platform=None, power="on")
 
     async def volume(self, address):
         return self.level if self.works else None
