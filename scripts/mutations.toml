@@ -110,3 +110,15 @@ name = "a TV that answers as another device is not acted on"
 file = "src/tv_mcp/service.py"
 find = '        if info is not None and tv\.device_id and info\.device_id != tv\.device_id:'
 replace = 'if False:'
+
+[[rule]]
+name = "a measure that gets worse fails the check"
+file = "scripts/ratchet.py"
+find = 'if _worse\(metric, base\[metric\], now\[metric\]\) and metric not in allowed:'
+replace = 'if False:'
+
+[[rule]]
+name = "when the levels main kept are missing, the base is measured"
+file = "scripts/ratchet.py"
+find = '^    return measure_base\(\)$'
+replace = 'return {}'
