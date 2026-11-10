@@ -85,6 +85,23 @@ jobs:
           zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
           detect --source /repo --redact --no-banner --exit-code 1
 
+  # Each marked rule switched off in turn: the test named after it has to go
+  # red, or the rule is guarded by nothing. One Python version is enough, since
+  # this asks whether the tests can fail, not whether the code runs everywhere.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      - name: Each rule's own test can fail
+        run: uv run python scripts/mutate.py
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10         # the default is 360; this job takes under a minute
