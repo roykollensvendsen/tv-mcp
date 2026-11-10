@@ -62,6 +62,11 @@ A rule (a refusal, a limit, a safety check) is one line marked
 - Arguments the owner would say: a title, a TV's friendly name, never an
   address or an id.
 - Answers carry a `say` line to read aloud, and refusals say why and what to do.
+- It answers within 30 seconds, all waits included. claude-voice cuts a tool
+  off after that, and the voice hears only "MCP tool call failed", with
+  nothing to tell the owner. A TV that is slow or asleep gets a short wait,
+  then an honest answer ("sent, but not on yet"), never a longer wait. A tool
+  that waits adds its longest path to `tests/test_voice_time_limit.py`.
 - It lives in a feature. Only the default set (`status`, `media`) is on for
   everyone; anything else is opt-in under `[features] enabled`. Adding to
   the default set raises `tests/test_context_budget.py`'s numbers on purpose,
@@ -117,6 +122,13 @@ data, so adding a model is a file, not a release.
 
 A new tool reaches the voice only after the owner approves it in claude-voice
 (`claude-voice plugins approve tv`, see claude-voice's `write-plugin` skill).
+The approval covers the command, its folder, the tool list and each tool's
+inputs, not the descriptions. So a new tool, a removed one or a changed input
+needs approving again and then a bridge restart; a change to a description or
+to what a tool does needs only the restart. The owner restarts the bridge
+(`systemctl --user restart claude-voice`) from a normal terminal, since it
+drops the voice call; never restart it yourself. Right after a restart the
+first call may get a 502 while the bridge finishes starting; try once more.
 Say in the pull request which tools are new, and whether each is safe to put
 on the voice's allow-list.
 
