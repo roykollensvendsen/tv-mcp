@@ -7,21 +7,20 @@ to the owner. On 2026-11-09 switching the garage TV on did exactly that.
 
 So each tool's longest path, added up from the waits it makes, has to leave
 room inside the limit. A new wait, or a longer one, goes into the sum here.
-The paths marked as known to run over are defects, not exceptions: the test
-for one turns green, and must then lose its mark, once its waits are cut.
+Work that can take longer, such as pulling subtitles out of a film or a screen
+starting a video, is left running past a wait of its own, and the voice is told
+it is on its way rather than cut off.
 """
 
 import pytest
 
 from tv_mcp import power, service
-from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen, youtube
+from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen
 
 #: How long claude-voice waits for a plugin tool, in seconds.
 VOICE_LIMIT = 30.0
 #: Room kept for everything not counted: the bridge, quick calls, the network.
 MARGIN = 2.0
-
-OVER = pytest.mark.xfail(strict=True, reason="known to run past the voice's limit")
 
 LONGEST = {
     "power on, a TV before Tizen": samsung_legacy.STANDBY_WAIT + power.SETTLE,
@@ -33,12 +32,9 @@ LONGEST = {
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
     ),
-    "play a YouTube video": pytest.param(youtube.START_WAIT * youtube.START_TRIES, marks=OVER),
-    "play a YouTube video, opening YouTube first": pytest.param(
-        samsung_tizen.YOUTUBE_TRIES + youtube.START_WAIT * youtube.START_TRIES, marks=OVER
-    ),
-    "the scene, from subtitles inside the film": pytest.param(
-        jellyfin.SUBTITLE_TIMEOUT + jellyfin.TIMEOUT, marks=OVER
+    "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
+    "the scene, from subtitles inside the film": (
+        jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT
     ),
 }
 

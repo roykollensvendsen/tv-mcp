@@ -65,8 +65,11 @@ A rule (a refusal, a limit, a safety check) is one line marked
 - It answers within 30 seconds, all waits included. claude-voice cuts a tool
   off after that, and the voice hears only "MCP tool call failed", with
   nothing to tell the owner. A TV that is slow or asleep gets a short wait,
-  then an honest answer ("sent, but not on yet"), never a longer wait. A tool
-  that waits adds its longest path to `tests/test_voice_time_limit.py`.
+  then an honest answer ("sent, but not on yet"), never a longer wait. Work
+  that really takes longer, such as a screen starting a video, keeps running
+  as a shielded task past a wait of its own, and the voice hears it is on its
+  way (`service.YOUTUBE_WAIT`, `SUBTITLE_WAIT`). A tool that waits adds its
+  longest path to `tests/test_voice_time_limit.py`.
 - It lives in a feature. Only the default set (`status`, `media`) is on for
   everyone; anything else is opt-in under `[features] enabled`. Adding to
   the default set raises `tests/test_context_budget.py`'s numbers on purpose,

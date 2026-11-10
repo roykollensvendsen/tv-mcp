@@ -5,6 +5,7 @@ import asyncio
 
 import httpx
 
+from tv_mcp import service as service_module
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
 from tv_mcp.drivers.youtube import (
     FirstThatAnswers,
@@ -332,3 +333,29 @@ def test_a_lounge_that_fails_unexpectedly_gives_a_refusal_not_an_error():
     )
     assert answer["outcome"] == "refused"
     assert "did not start" in answer["say"]
+
+
+def test_a_video_slow_to_start_gets_an_answer_in_time_and_keeps_starting(monkeypatch):
+    # The voice gives a tool 30 seconds; a screen can take longer to open YouTube and start.
+    monkeypatch.setattr(service_module, "YOUTUBE_WAIT", 0.01)
+    playing = asyncio.Event()
+
+    class Slow(Lounge):
+        async def play(self, tv_key, screen_id, video_id):
+            await playing.wait()
+            return await super().play(tv_key, screen_id, video_id)
+
+    async def play_then_finish():
+        lounge = Slow()
+        answer = await _service(Videos([TRAILER]), lounge, YouTubeTv()).play_youtube(
+            TRAILER.id, "the living room"
+        )
+        playing.set()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        return answer, lounge.played
+
+    answer, played = asyncio.run(play_then_finish())
+    assert answer["outcome"] == "starting"
+    assert "STAR WARS Original Trailer" in answer["say"]
+    assert played == [("living-room", "screen-1", TRAILER.id)]
