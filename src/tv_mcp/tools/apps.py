@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.tools.hints import CHANGES
+
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
@@ -14,12 +16,15 @@ if TYPE_CHECKING:
 def register(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
     """Add ``tv_open_app`` and ``tv_close_app``."""
 
-    @server.tool(description="Launch an app on a TV.\nSuch as NRK, YouTube or Jellyfin, on a TV that is on.")
+    @server.tool(
+        annotations=CHANGES,
+        description="Launch an app on a TV.\nSuch as NRK, YouTube or Jellyfin, on a TV that is on.",
+    )
     async def tv_open_app(app: str, tv: str) -> dict[str, Any]:
         answer = await service.open_app(app, tv)
         return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}
 
-    @server.tool(description="Shut an app on a TV.\nSuch as Jellyfin.")
+    @server.tool(annotations=CHANGES, description="Shut an app on a TV.\nSuch as Jellyfin.")
     async def tv_close_app(app: str, tv: str) -> dict[str, Any]:
         answer = await service.close_app(app, tv)
         return {"success": answer["outcome"] == "done", "simulated": simulated, **answer}

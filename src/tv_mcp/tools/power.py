@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal
 
 from tv_mcp.power import PowerService
+from tv_mcp.tools.hints import CHANGES
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -17,13 +18,18 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     """Add ``tv_power_request`` and ``tv_power_confirm``."""
     power = PowerService(service)
 
-    @server.tool(description="Ask to switch on or off.\nRead 'say' aloud; nothing is switched yet.")
+    @server.tool(
+        annotations=CHANGES,
+        description="Ask to switch on or off.\nRead 'say' aloud; nothing is switched yet.",
+    )
     async def tv_power_request(state: Literal["on", "off"], tv: str) -> dict[str, Any]:
         answer = await power.request(state, tv)
         return {"success": answer["outcome"] == "question", "simulated": simulated, **answer}
 
     @server.tool(
-        description="Switch after a clear yes.\nWith the token from tv_power_request, once the owner said it."
+        annotations=CHANGES,
+        description="Switch after a clear yes.\nWith the token from tv_power_request,"
+        " once the owner said it.",
     )
     async def tv_power_confirm(token: str) -> dict[str, Any]:
         answer = await power.confirm(token)
