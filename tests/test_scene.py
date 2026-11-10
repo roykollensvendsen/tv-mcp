@@ -3,6 +3,7 @@
 
 import asyncio
 
+from tv_mcp import service as service_module
 from tv_mcp.media import Cue, Session, parse_srt, scene_lines
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, Tv
@@ -130,3 +131,31 @@ def test_a_hands_off_tv_is_never_read_for_its_scene():
     answer = asyncio.run(_service(library, LIVING, UPSTAIRS).scene("upstairs", minutes=2))
     assert answer["outcome"] == "refused"
     assert library.asked == []
+
+
+def test_subtitles_slow_to_pull_out_get_an_answer_in_time_and_are_ready_when_asked_again(monkeypatch):
+    # The voice gives a tool 30 seconds; pulling a track out of the film can take longer.
+    monkeypatch.setattr(service_module, "SUBTITLE_WAIT", 0.01)
+    pulled = asyncio.Event()
+
+    class Slow(SceneLibrary):
+        async def subtitles(self, item_id):
+            self.asked.append(item_id)
+            await pulled.wait()
+            return self._subtitles
+
+    async def ask_twice():
+        library = Slow([WATCHING], parse_srt(SRT))
+        service = _service(library)
+        first = await service.scene("the living room", minutes=2)
+        pulled.set()
+        await asyncio.sleep(0)
+        second = await service.scene("the living room", minutes=2)
+        return first, second, library.asked
+
+    first, second, asked = asyncio.run(ask_twice())
+    assert first["outcome"] == "pending"
+    assert "again" in first["say"]
+    assert second["outcome"] == "done"
+    assert len(second["lines"]) == 2
+    assert asked == ["a1"]

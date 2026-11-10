@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
     from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, Playing, TvInfo
-    from tv_mcp.media import MediaItem, MediaLibrary, Session
+    from tv_mcp.media import Cue, MediaItem, MediaLibrary, Session
     from tv_mcp.video import Lounge, VideoSearch
 
 LEFT_ALONE = "left alone"
@@ -52,6 +52,15 @@ YOUTUBE_RESULTS = 5
 #: How many of a film's cast a scene names, in the order the library bills them.
 CAST_LIMIT = 15
 
+#: claude-voice gives a tool 30 seconds. Work that can take longer is left
+#: running after these many seconds, and the voice is told it is on its way.
+#: How long a scene waits for subtitles that have to be pulled out of the film.
+SUBTITLE_WAIT = 8.0
+#: How long playing a YouTube video waits for the search and for the screen to play it.
+YOUTUBE_WAIT = 20.0
+#: How many films' subtitles are kept once pulled out, for the next question.
+SUBTITLES_KEPT = 4
+
 
 class TvService:
     """Status and discovery for the TVs in the settings."""
@@ -77,6 +86,10 @@ class TvService:
         #: Where each TV was last sent, and when: the TV reports it late.
         self._moved: dict[str, tuple[float, float]] = {}
         self.videos, self.lounge = videos, lounge
+        #: Subtitles being pulled out, or pulled out, by the film's id.
+        self._subtitles: dict[str, asyncio.Task[list[Cue] | None]] = {}
+        #: Work left running after the voice was answered, kept until it ends.
+        self._running: set[asyncio.Task[Any]] = set()
 
     async def _watching(self, tv: Tv, again: int = LOOK_AGAIN) -> Session | None:
         """What plays on `tv` in Jellyfin, asked `again` more times when it seems gone."""
@@ -283,19 +296,26 @@ class TvService:
             return _refused(f"{_capital(tv.spoken)} cannot show YouTube from here.")
         if wrong := await self._itself(tv):
             return wrong
-        if is_video_id(words):
-            video = await self.videos.video(words) or Video(
-                id=words, title="the video", channel=None, duration=None
-            )
-        else:
-            found = await self.videos.search(words)
-            if not found:
-                return _refused(f"Found nothing on YouTube for {words!r}.")
-            video = found[0]
-        screen = await driver.youtube_screen(tv.address or "")
-        if screen is None:
-            return _refused(f"YouTube did not open on {tv.spoken}.")
-        if refusal := await self._start_video(tv, screen, video):
+        clock = asyncio.get_running_loop().time
+        deadline = clock() + YOUTUBE_WAIT
+        try:
+            video = await asyncio.wait_for(self._video(words), YOUTUBE_WAIT)
+        except TimeoutError:
+            return _refused(f"YouTube did not answer the search for {words!r} in time.")
+        if video is None:
+            return _refused(f"Found nothing on YouTube for {words!r}.")
+        starting = asyncio.ensure_future(self._open_and_start(driver, tv, video))
+        self._running.add(starting)
+        starting.add_done_callback(self._running.discard)
+        try:
+            refusal = await asyncio.wait_for(asyncio.shield(starting), max(deadline - clock(), 0.0))
+        except TimeoutError:
+            return {
+                "outcome": "starting",
+                "say": f"I asked {tv.spoken} to play {video.title}; it is still starting.",
+                "video": _video(video),
+            }
+        if refusal:
             return refusal
         advert = " after an advert" if getattr(self.lounge, "advert", False) else ""
         return {
@@ -303,6 +323,26 @@ class TvService:
             "say": f"Playing {video.title} on {tv.spoken}{advert}.",
             "video": _video(video),
         }
+
+    async def _video(self, words: str) -> Video | None:
+        """The video `words` names: its id, or the best match for them."""
+        assert self.videos is not None  # noqa: S101 - play_youtube checked it
+        if is_video_id(words):
+            return await self.videos.video(words) or Video(
+                id=words, title="the video", channel=None, duration=None
+            )
+        found = await self.videos.search(words)
+        return found[0] if found else None
+
+    async def _open_and_start(self, driver: ShowsYouTube, tv: Tv, video: Video) -> dict[str, Any] | None:
+        """Open YouTube on `tv` and start `video`; None once it plays, or the refusal to say."""
+        try:
+            screen = await driver.youtube_screen(tv.address or "")
+        except Exception:  # noqa: BLE001 - whatever the TV does, the voice gets a sentence
+            screen = None
+        if screen is None:
+            return _refused(f"YouTube did not open on {tv.spoken}.")
+        return await self._start_video(tv, screen, video)
 
     async def _start_video(self, tv: Tv, screen: str, video: Video) -> dict[str, Any] | None:
         """Start `video` on the screen; None once it plays, or the refusal to say."""
@@ -448,7 +488,15 @@ class TvService:
         watching = await self._watching(tv)
         if watching is None or watching.item_id is None:
             return _refused(f"Nothing is playing on {tv.spoken}.")
-        cues = await self.library.subtitles(watching.item_id)
+        try:
+            cues = await asyncio.wait_for(
+                asyncio.shield(self._pull_subtitles(watching.item_id)), SUBTITLE_WAIT
+            )
+        except TimeoutError:
+            return {
+                "outcome": "pending",
+                "say": f"I am reading the subtitles of {watching.now_playing}. Ask again in half a minute.",
+            }
         if not cues:
             return _refused(f"{watching.now_playing} has no subtitles to go by.")
         position = watching.position or 0.0
@@ -470,6 +518,18 @@ class TvService:
                 f"{role}: {actor}" for role, actor in (await self.library.cast(watching.item_id))[:CAST_LIMIT]
             ],
         }
+
+    def _pull_subtitles(self, item_id: str) -> asyncio.Task[list[Cue] | None]:
+        """The subtitles of `item_id` being pulled out, started anew when the last try failed."""
+        assert self.library is not None  # noqa: S101 - scene checked it
+        task = self._subtitles.get(item_id)
+        if task is None or (task.done() and (task.cancelled() or task.exception() or not task.result())):
+            task = asyncio.ensure_future(self.library.subtitles(item_id))
+            self._subtitles.pop(item_id, None)
+            self._subtitles[item_id] = task
+            while len(self._subtitles) > SUBTITLES_KEPT:
+                del self._subtitles[next(iter(self._subtitles))]
+        return task
 
     async def sound(  # noqa: PLR0911 - one refusal per reason
         self, command: str, name: str, *, level: int | None = None, relative: bool = False
