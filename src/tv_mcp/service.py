@@ -893,4 +893,6 @@ def _in_app(playing: Playing) -> dict[str, Any]:
     if playing.runtime and playing.position is not None:
         report["left"] = spoken_time(max(playing.runtime - playing.position, 0))
     report["paused"] = playing.paused
+    if playing.behind:
+        report["behind"] = list(playing.behind)
     return report

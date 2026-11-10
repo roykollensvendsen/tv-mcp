@@ -55,11 +55,21 @@ def _playing(playing: dict[str, Any] | None) -> str:
         return ""
     if not playing.get("title"):
         # The TV names the app in front but not what it plays, if anything.
-        return f", {playing['app']} is open" if playing.get("app") else ""
+        return _apps(playing.get("app"), playing.get("behind") or [])
     what = f", {playing['title']} is paused" if playing.get("paused") else f", playing {playing['title']}"
     far = [f"{playing['at']} in"] if playing.get("at") else []
     far += [f"{playing['left']} left"] if playing.get("left") else []
     return what + (": " + ", ".join(far) if far else "")
+
+
+def _apps(front: str | None, behind: list[str]) -> str:
+    """Which app is on the screen and which run behind it, as the end of a sentence."""
+    named = " and ".join(behind)
+    if front and behind:
+        return f", {front} is open, {named} {'runs' if len(behind) == 1 else 'run'} behind it"
+    if behind:
+        return f", nothing is open, {named} {'runs' if len(behind) == 1 else 'run'} in the background"
+    return f", {front} is open" if front else ""
 
 
 def _item(item: dict[str, Any]) -> str:

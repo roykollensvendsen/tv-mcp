@@ -173,6 +173,51 @@ def test_one_app_that_does_not_answer_does_not_hide_the_app_in_front():
     assert asyncio.run(run()) == Playing(app="Netflix")
 
 
+def _frame(handler):
+    import httpx  # noqa: PLC0415
+
+    from tv_mcp.drivers.samsung_tizen import SamsungTizen  # noqa: PLC0415
+
+    async def run():
+        transport = httpx.MockTransport(handler)
+        async with (
+            httpx.AsyncClient(transport=transport) as client,
+            httpx.AsyncClient(transport=transport) as tls,
+        ):
+            return await SamsungTizen(client, tls_client=tls).playing("192.0.2.10")
+
+    return asyncio.run(run())
+
+
+def test_an_app_the_tv_drops_the_connection_for_is_asked_once_more():
+    # 2026-11-10: The Frame dropped the reused connection when asked about Netflix,
+    # so status said nothing was open while Netflix was on the screen.
+    import httpx  # noqa: PLC0415
+
+    asked = []
+
+    def handler(request):
+        asked.append(request.url.path)
+        if request.url.path.endswith("/3201907018807") and asked.count(request.url.path) == 1:
+            dropped = "Server disconnected without sending a response."
+            raise httpx.RemoteProtocolError(dropped, request=request)
+        visible = request.url.path.endswith("/3201907018807")
+        return httpx.Response(200, json={"running": visible, "visible": visible})
+
+    assert _frame(handler) == Playing(app="Netflix")
+
+
+def test_status_names_an_app_running_behind_the_one_in_front():
+    import httpx  # noqa: PLC0415
+
+    def handler(request):
+        front = request.url.path.endswith("/3201907018807")
+        behind = request.url.path.endswith("/111299001912")
+        return httpx.Response(200, json={"running": front or behind, "visible": front})
+
+    assert _frame(handler) == Playing(app="Netflix", behind=("YouTube",))
+
+
 def test_status_names_the_app_in_front_and_never_says_none_when_the_tv_gives_no_title():
     # 2026-11-09: "Stua oppe is on, playing None, volume 6." with NRK TV open.
     from tv_mcp.tools.say import tv_lines  # noqa: PLC0415
@@ -207,3 +252,19 @@ def test_a_jump_to_a_time_in_jellyfin_waits_for_its_report_instead_of_asking_the
     assert answer["outcome"] == "done", answer
     assert library.seeks == [("s1", 4020)]
     assert driver.sent == []
+
+
+def test_status_says_which_apps_run_behind_the_one_on_the_screen():
+    from tv_mcp.tools.say import tv_lines  # noqa: PLC0415
+
+    class Behind(Player):
+        async def playing(self, address):
+            return self.now
+
+    driver = Behind()
+    driver.now = Playing(app="Netflix", behind=("YouTube",))
+    reports = asyncio.run(_service(driver).status("the living room"))
+    assert "Netflix is open, YouTube runs behind it" in tv_lines(reports)
+    driver.now = Playing(app=None, behind=("Netflix", "YouTube"))
+    reports = asyncio.run(_service(driver).status("the living room"))
+    assert "nothing is open, Netflix and YouTube run in the background" in tv_lines(reports)
