@@ -302,3 +302,25 @@ def test_a_tv_woken_by_cec_that_is_not_seen_on_in_time_is_said_to_be_on_its_way(
     answer = _run(power.confirm("token-0"))
     assert answer["outcome"] == "unverified"
     assert answer["say"] == "I asked the garage to switch on; it can take a minute before it is on."
+
+
+def test_a_token_is_kept_when_nothing_reached_the_tv():
+    # The plugin standard's rule 7: a token is spent only once the switch was sent.
+    class Silent(PowerDriver):
+        async def switch(self, tv, *, on):
+            self.switched.append((tv.key, on))
+            return False
+
+    driver = Silent("on")
+    power = _power(driver)
+    _run(power.request("off", "The Frame"))
+    assert _run(power.confirm("token-0"))["outcome"] == "refused"
+    driver.obeys = True
+
+    async def answers(tv, *, on):
+        driver.switched.append((tv.key, on))
+        driver.power = "off"
+        return True
+
+    driver.switch = answers
+    assert _run(power.confirm("token-0"))["outcome"] == "done"

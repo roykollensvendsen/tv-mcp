@@ -59,6 +59,12 @@ A rule (a refusal, a limit, a safety check) is one line marked
   same words. Details go on the next lines. `tests/test_tool_openings.py`
   holds every tool to this; keep the opening short rather than filling the
   limit, since the app may change it.
+- After a change to a tool's name or opening, and the bridge's restart, ask
+  the voice what it sees for that tool, and check it reads the whole opening.
+  A test cannot see what the app shows (the shared plugin standard's rule 12;
+  `tests/test_plugin_standard.py` maps each of its rules to a test here).
+- A name that sounds like another's goes into `tests/test_tool_names.py`'s
+  list, with openings that start with different words.
 - Arguments the owner would say: a title, a TV's friendly name, never an
   address or an id.
 - Answers carry a `say` line to read aloud, and refusals say why and what to do.
