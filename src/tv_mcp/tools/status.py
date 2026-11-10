@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal
 
 from tv_mcp.tools.hints import LOOKS
-from tv_mcp.tools.say import tv_lines
+from tv_mcp.tools.say import tv_lines, waited_lines
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -30,12 +30,13 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
         tv: str | None = None, wait_for: Literal["on", "off"] | None = None
     ) -> dict[str, Any]:
         if wait_for is None:
-            reports = await service.status(tv)
-            success = all(r["state"] != "refused" for r in reports)
-            return {"success": success, "say": tv_lines(reports), "simulated": simulated, "tvs": reports}
+            return _answer(await service.status(tv), simulated=simulated)
         waited = await service.wait_for(tv, wait_for)
-        reports, reached = waited["tvs"], waited["reached"]
-        say = tv_lines(reports) if reports else f"I could not read {tv} in time."
-        if not reached and all(r["state"] != "refused" for r in reports):
-            say += f" It is not {wait_for} yet. Ask me to wait again."
-        return {"success": reached, "say": say, "simulated": simulated, "tvs": reports}
+        say = waited_lines(waited["tvs"], tv, wait_for, reached=waited["reached"])
+        return {"success": waited["reached"], "say": say, "simulated": simulated, "tvs": waited["tvs"]}
+
+
+def _answer(reports: list[dict[str, Any]], *, simulated: bool) -> dict[str, Any]:
+    """Status of each TV, spoken; a failure when a name was not understood."""
+    success = all(r["state"] != "refused" for r in reports)
+    return {"success": success, "say": tv_lines(reports), "simulated": simulated, "tvs": reports}
