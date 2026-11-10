@@ -13,7 +13,7 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.driver import DONE, UNSUPPORTED, HasPlayer, HasSound, ShowsYouTube
+from tv_mcp.driver import DONE, INPUTS, UNSUPPORTED, ChangesInput, HasPlayer, HasSound, ShowsYouTube
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 from tv_mcp.video import Video, is_video_id
@@ -421,6 +421,26 @@ class TvService:
         if not await cast("OpensApps", driver).open_app(tv.address or "", app_id):
             return _refused(f"{tv.spoken.capitalize()} did not open {app}. Is it on?")
         return {"outcome": "done", "say": f"Opened {app} on {tv.spoken}."}
+
+    async def show_input(self, source: str, name: str) -> dict[str, Any]:
+        """Show the input `source`, such as "HDMI 1", on the TV called `name`."""
+        tv = self._tv(name)
+        if not isinstance(tv, Tv):
+            return tv
+        wanted = re.sub(r"[^a-z0-9]", "", source.casefold())
+        if wanted not in INPUTS:
+            listed = ", ".join(INPUTS.values())
+            return _refused(f"I can show {listed}, not {source!r}.")
+        driver, target = self.drivers.get(tv.driver), tv
+        if not isinstance(driver, ChangesInput) and tv.power_driver:
+            driver, target = self.drivers.get(tv.power_driver), replace(tv, address=tv.power_address)
+        if not isinstance(driver, ChangesInput):
+            return _refused(f"{_capital(tv.spoken)} cannot change input from here.")
+        if wrong := await self._itself(tv):
+            return wrong
+        if not await driver.show_input(target, wanted):
+            return _refused(f"{_capital(tv.spoken)} did not answer. Is it on?")
+        return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {INPUTS[wanted]} now."}
 
     async def close_app(self, app: str, name: str) -> dict[str, Any]:
         """Close `app` on the TV called `name`."""

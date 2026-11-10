@@ -295,6 +295,12 @@ class SamsungTizen:
             return False
         return True
 
+    async def show_input(self, tv: Tv, source: str) -> bool:
+        """Press the input's own key, such as KEY_HDMI1, over the paired connection."""
+        if tv.address is None:
+            return False
+        return await self._press(tv.address, tv.key, f"KEY_{source.upper()}")
+
     async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Switch `tv` on or off.
 

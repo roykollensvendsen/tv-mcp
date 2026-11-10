@@ -140,6 +140,12 @@ class SamsungLegacy:
         # In deep standby the remote port may not answer; the wake packet may still switch it on.
         return pressed or woken
 
+    async def show_input(self, tv: Tv, source: str) -> bool:
+        """Press the input's own key, such as KEY_HDMI1, on the remote port."""
+        if tv.address is None:
+            return False
+        return await self._press(tv.address, f"KEY_{source.upper()}", ANSWER_WAIT)
+
 
 async def _press(address: str, key: str, wait: float) -> bool:  # pragma: no cover - a real TV
     """Press `key` on the TV's remote port, after it lets tv-mcp in."""

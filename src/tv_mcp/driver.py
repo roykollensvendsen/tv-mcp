@@ -104,6 +104,19 @@ class Switches(Protocol):
         ...
 
 
+#: The inputs a TV can be asked to show, each with how it is said aloud.
+INPUTS = {"hdmi1": "HDMI 1", "hdmi2": "HDMI 2", "hdmi3": "HDMI 3", "hdmi4": "HDMI 4", "tv": "the aerial"}
+
+
+@runtime_checkable
+class ChangesInput(Protocol):
+    """A driver that can change which input its TV shows."""
+
+    async def show_input(self, tv: Tv, source: str) -> bool:
+        """Show `source`, one of ``INPUTS``, on `tv`; False when it did not answer."""
+        ...
+
+
 @runtime_checkable
 class WakesScreen(Protocol):
     """A device in a TV, such as a Chromecast, that wakes the TV over HDMI (HDMI-CEC)."""

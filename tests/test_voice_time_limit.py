@@ -32,6 +32,8 @@ LONGEST = {
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
     ),
+    "change input, a TV before Tizen": samsung_tizen.TIMEOUT + samsung_legacy.ANSWER_WAIT,
+    "change input, by the paired remote": samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (
         jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT
