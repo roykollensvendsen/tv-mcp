@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.tools.hints import LOOKS
 from tv_mcp.tools.say import tv_lines
 
 if TYPE_CHECKING:
@@ -17,10 +18,11 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     """Add ``tv_discover``."""
 
     @server.tool(
+        annotations=LOOKS,
         description=(
             "Find TVs on the network.\nTheir model, year, platform, and whether set up here. "
             "full=true asks every TV to answer; only when the owner asks for a full search."
-        )
+        ),
     )
     async def tv_discover(full: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002 - a tool argument
         found = await service.discover(full=full)
