@@ -8,6 +8,7 @@ owner's choice of features (tv_mcp.tools).
 
 from __future__ import annotations
 
+import asyncio
 import functools
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,10 @@ INSTRUCTIONS = (
     "asking, and never try to reach a TV reported 'left alone'."
 )
 SIMULATED = "SIMULATED TVs, not real ones: say so. "
+#: The Claude app gives up on a call after about 15 seconds; every tool answers before then.
+ANSWER_WITHIN = 12.0
+#: What the voice hears when a tool is still working by then; the work carries on.
+WORKING = "That is taking a while, and it carries on. Ask again in a moment to hear how it went."
 #: What the voice hears when a TV or the library stops answering partway.
 DROPPED = "The connection to the TV or the library dropped. Try again."
 #: What the voice hears when tv-mcp itself fails, so it never hears only that the tool failed.
@@ -39,6 +44,8 @@ class _Guarded:
     def __init__(self, server: MCPServer[Any], simulated: bool) -> None:  # noqa: FBT001
         self._server, self._simulated = server, simulated
         self.names: list[str] = []
+        #: Work still running after its answer was given, kept until it ends.
+        self.running: set[asyncio.Future[Any]] = set()
 
     def tool(self, **options: Any) -> Callable[[Callable[..., Awaitable[Any]]], Any]:  # noqa: ANN401
         register = self._server.tool(**options)
@@ -46,9 +53,19 @@ class _Guarded:
         def guard(tool: Callable[..., Awaitable[Any]]) -> Any:  # noqa: ANN401
             @functools.wraps(tool)
             async def answered(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+                work = asyncio.ensure_future(tool(*args, **kwargs))
                 try:
-                    answer = await tool(*args, **kwargs)
-                except (httpx.HTTPError, OSError, TimeoutError):
+                    # RULE: a tool still working at the deadline says it carries on
+                    answer = await asyncio.wait_for(asyncio.shield(work), ANSWER_WITHIN)
+                except TimeoutError:
+                    if not work.done():
+                        self.running.add(work)
+                        work.add_done_callback(_ended)
+                        work.add_done_callback(self.running.discard)
+                        answer = {"success": False, "outcome": "working", "say": WORKING}
+                    else:
+                        answer = {"success": False, "outcome": "refused", "say": DROPPED}
+                except (httpx.HTTPError, OSError):
                     answer = {"success": False, "outcome": "refused", "say": DROPPED}
                 except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
                     answer = {"success": False, "outcome": "refused", "say": BROKE}
@@ -61,6 +78,12 @@ class _Guarded:
             return register(answered)
 
         return guard
+
+
+def _ended(work: asyncio.Future[Any]) -> None:
+    """Collect what work left running ended with, so a failure there is not left unread."""
+    if not work.cancelled():
+        work.exception()
 
 
 class UnknownFeatureError(ValueError):

@@ -127,3 +127,35 @@ def test_every_tool_is_guarded_so_no_failure_reaches_the_voice_bare():
     built = server.build_server(simulated_service(), features=list(FEATURES))
     names = {t.name for t in asyncio.run(built.list_tools())}
     assert names == set(built.guarded)
+
+
+def test_a_tool_still_working_at_the_deadline_says_it_carries_on(monkeypatch):
+    # The Claude app gives up on a call after about 15 seconds (the plugin standard's rule 3).
+    import asyncio  # noqa: PLC0415
+
+    from tv_mcp import server  # noqa: PLC0415
+    from tv_mcp.simulator import simulated_service  # noqa: PLC0415
+
+    monkeypatch.setattr(server, "ANSWER_WITHIN", 0.01)
+    finish, finished = asyncio.Event(), []
+    service = simulated_service()
+
+    async def slow(name):
+        await finish.wait()
+        finished.append(name)
+        return []
+
+    service.status = slow
+
+    async def call_then_finish():
+        built = server.build_server(service)
+        result = await asyncio.wait_for(built.call_tool("tv_status", {}), 2)  # never hang the suite
+        finish.set()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        return result.structured_content
+
+    answer = asyncio.run(call_then_finish())
+    assert answer["outcome"] == "working"
+    assert "carries on" in answer["say"]
+    assert finished == [None]
