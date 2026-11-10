@@ -57,3 +57,15 @@ def test_the_deferred_list_gives_every_row_a_trigger():
         assert len(cells) == 3, f"a deferred row needs what, the trigger, and why not: {row[:60]}"
         assert cells[1], f"no trigger on: {cells[0]}"
         assert cells[2], f"no reason on: {cells[0]}"
+
+
+def test_every_gate_the_readme_says_ci_runs_is_in_the_workflow():
+    # The README says "Every one of these runs in continuous integration"; the
+    # mutation run was listed there for weeks while no job ran it.
+    readme = (ROOT / "README.md").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "checks.yml").read_text()
+    block = readme.split("## The gates", 1)[1].split("```bash", 1)[1].split("```", 1)[0]
+    commands = [line.split("#", 1)[0].strip() for line in block.splitlines() if line.strip()]
+    assert commands
+    for command in commands:
+        assert command in workflow, command
