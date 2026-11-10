@@ -158,3 +158,9 @@ name = "a wait for a TV ends within the voice time"
 file = "src/tv_mcp/service.py"
 find = '        until = self\._clock\(\) \+ WAIT_WITHIN'
 replace = 'until = self._clock() + 60 * WAIT_WITHIN'
+
+[[rule]]
+name = "art mode is only read, never set"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = '                mode = channel\.get_artmode\(\)'
+replace = 'mode = channel.set_artmode("on") or channel.get_artmode()'

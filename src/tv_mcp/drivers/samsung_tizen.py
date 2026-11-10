@@ -45,6 +45,22 @@ def _samsung_remote(address: str, token_file: pathlib.Path) -> Remote:  # pragma
     return remote
 
 
+class ArtChannel(Protocol):
+    """The Frame's art channel; only reading its mode is used."""
+
+    def get_artmode(self) -> str: ...  # noqa: D102
+    def close(self) -> None: ...  # noqa: D102
+
+
+def _samsung_art(address: str, token_file: pathlib.Path) -> ArtChannel:  # pragma: no cover - needs a real TV
+    from samsungtvws.art import SamsungTVArt  # noqa: PLC0415 - only loaded when art mode is read
+
+    channel: ArtChannel = SamsungTVArt(  # type: ignore[no-untyped-call]
+        host=address, port=8002, name="tv-mcp", timeout=TIMEOUT, token_file=str(token_file)
+    )
+    return channel
+
+
 def magic_packet(mac: str) -> bytes:
     """A Wake-on-LAN packet: six 0xFF bytes, then the MAC sixteen times."""
     return b"\xff" * 6 + bytes.fromhex(mac.replace(":", "").replace("-", "")) * 16
@@ -130,11 +146,12 @@ class SamsungTizen:
         remote: Callable[[str, pathlib.Path], Remote] = _samsung_remote,
         wake: Callable[[str], None] = _send_wake,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        art: Callable[[str, pathlib.Path], ArtChannel] = _samsung_art,
     ) -> None:
         """Use `client` for every request; pairing tokens are kept in `token_folder`."""
         self._client = client
         self._token_folder = token_folder or pathlib.Path("~/.config/tv-mcp").expanduser()
-        self._remote, self._wake, self._sleep = remote, wake, sleep
+        self._remote, self._wake, self._sleep, self._art = remote, wake, sleep, art
         # The TV's port 8002 answers with a certificate it signed itself.
         self._tls = tls_client or httpx.AsyncClient(verify=False)  # noqa: S501 - the TV's own certificate
 
@@ -292,6 +309,24 @@ class SamsungTizen:
             except (httpx.HTTPError, ValueError):
                 continue
         return False
+
+    async def art_mode(self, tv: Tv) -> bool | None:
+        """Whether The Frame shows art, read over its paired art channel; None when it cannot tell."""
+        token_file = self._token_folder / f"{tv.key}-token"
+
+        def read() -> bool | None:
+            # RULE: art mode is only read, never set
+            channel = self._art(tv.address or "", token_file)
+            try:
+                mode = channel.get_artmode()
+            finally:
+                channel.close()
+            return {"on": True, "off": False}.get(str(mode))
+
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(read), TIMEOUT + 1)
+        except Exception:  # noqa: BLE001 - whatever the channel does, status says what it knows
+            return None
 
     async def _press(self, address: str, tv_key: str, key: str) -> bool:
         """Press one remote key on the TV over its paired connection."""

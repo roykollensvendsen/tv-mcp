@@ -34,7 +34,7 @@ EXPIRES = 30.0
 CONFIRM_WITHIN = 10.0
 #: The words a request takes.
 STATES = ("on", "off")
-_OFF = {"standby", "standby or art mode", "off or not reachable"}
+_OFF = {"standby", "standby or art mode", "showing art", "off or not reachable"}
 
 
 @dataclass(frozen=True)
