@@ -466,13 +466,25 @@ class TvService:
         found = self._input_driver(tv, ChangesInput)
         if found is None:
             return _refused(f"{_capital(tv.spoken)} cannot change input from here. Use the TV's own remote.")
-        if wrong := await self._itself(tv):
-            return wrong
         driver, target = found
+        if wrong := await self._itself(tv) or await self._screen_off(tv, driver, target):
+            return wrong
         sent = await cast("ChangesInput", driver).show_input(target, wanted)
         if sent is None:
             return _refused(f"{_capital(tv.spoken)} did not answer. Is it on?")
         return _input_answer(tv, sent)
+
+    @staticmethod
+    async def _screen_off(tv: Tv, driver: Any, target: Tv) -> dict[str, Any] | None:  # noqa: ANN401
+        """A refusal unless the screen says it is on: a remote key sent in standby may wake it."""
+        info = await driver.read_info(target.address or "")
+        # RULE: an input is changed only while the screen is on
+        if info is not None and info.power == "on":
+            return None
+        return _refused(
+            f"{_capital(tv.spoken)} is not on, so its input was left alone. "
+            "Switch it on first, then ask again."
+        )
 
     def _input_driver(self, tv: Tv, kind: type) -> tuple[Any, Tv] | None:
         """The driver that does `kind` for `tv`, at the address it uses: its own, or its power driver."""

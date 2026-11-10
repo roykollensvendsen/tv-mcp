@@ -134,3 +134,9 @@ name = "when the levels main kept are missing, the base is measured"
 file = "scripts/ratchet.py"
 find = '^    return measure_base\(\)$'
 replace = 'return {}'
+
+[[rule]]
+name = "an input is changed only while the screen is on"
+file = "src/tv_mcp/service.py"
+find = '        if info is not None and info\.power == "on":'
+replace = 'if True:'
