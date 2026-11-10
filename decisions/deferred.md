@@ -13,4 +13,3 @@ read whenever a decision record is written and when a phase ends.
 | `CODEOWNERS` | A second person who reviews | It would name one person as the owner of everything |
 | `pre-commit` as a requirement rather than an option | A second contributor | The gates run in CI, and a hook one person installs is a hook one person maintains |
 | The quality ratchet (`quality.json`, as in claude-voice) | The first module of real code under `src/tv_mcp/` beyond the command line | Every level it would record today is the scaffold's, so it would guard nothing |
-| Branch protection and rebase-only merges on the forge | The repository is made public, or the account pays for protection on private ones | The forge refuses protection on a private repository on the free plan |

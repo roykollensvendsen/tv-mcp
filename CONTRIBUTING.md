@@ -113,20 +113,14 @@ and it changes only by hand.
 5. **Open one pull request per change**, with the template's checklist
    answered. The template is the mechanism for the rules no script can measure.
 
-**While this repository is private, `main` is not protected.** The forge
-refuses branch protection on a private repository on the free plan, so nothing
-stops a direct push today. The rule is kept by hand until then: one branch and
-one pull request per change, landed by rebase. Turning protection on is in
-[`decisions/deferred.md`](decisions/deferred.md), with its trigger.
-
-Once it applies, `main` is protected: a pull request is required, every status
+The repository is public, and `main` is protected: a pull request is required, every status
 check has to pass, force pushes and deletions are refused, history stays
 linear, and none of it is waived for administrators. That is a repository setting rather than a test,
 because a test that proves it would need a credential to pass and would fail for
 the wrong reasons. It is the one rule here enforced by something the suite
 cannot see. `python scripts/forge.py roykollensvendsen/tv-mcp` in the `start-repo` skill is what
-applies it, and it says plainly when the forge refuses — branch protection needs
-a public repository or a paid plan.
+applies it; run it again after a new check is added, so that check is
+required too.
 
 A pull request lands by rebase, and by nothing else. Every commit on a branch
 therefore arrives on `main` individually, so write each one to stand alone:

@@ -305,9 +305,9 @@ loaded yet (`tests/test_tool_openings.py`).
 tools and characters (4 tools and 1511 characters today: status, search, play (from where it stopped, or from the start) and pause/resume/stop/seek/mute/unmute/volume, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
 either does it on purpose, in its own pull request.
 
-The repository stays private until the owner decides otherwise. It is written
-to be ready for that: GPL-3.0-or-later, and nothing about the owner's home in
-it.
+The repository is public (since 2026-11-10): GPL-3.0-or-later, and nothing
+about the owner's home in it, which `scripts/private_data_scan.py` and the
+secret scan in continuous integration keep true.
 
 ## How it plugs into claude-voice
 
