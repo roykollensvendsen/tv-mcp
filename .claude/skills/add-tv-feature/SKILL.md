@@ -51,7 +51,14 @@ A rule (a refusal, a limit, a safety check) is one line marked
 ## 4. Make the tool small enough for a voice
 
 - Named after the plugin: every tool starts with `tv_`, which claude-voice requires.
-- A one-line description. Every character is read by the model on every turn.
+- A short description. Every character is read by the model on every turn.
+- It opens with a whole sentence on a line of its own, short enough to be seen
+  whole: before the voice loads a tool, the Claude app shows it only the first
+  two dozen or so characters of each description. The opening says what sets
+  the tool apart, without repeating its name, and no two tools open with the
+  same words. Details go on the next lines. `tests/test_tool_openings.py`
+  holds every tool to this; keep the opening short rather than filling the
+  limit, since the app may change it.
 - Arguments the owner would say: a title, a TV's friendly name, never an
   address or an id.
 - Answers carry a `say` line to read aloud, and refusals say why and what to do.

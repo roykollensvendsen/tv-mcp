@@ -18,7 +18,7 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
 
     @server.tool(
         description=(
-            "Find TVs on the network: model, year, platform, whether set up here. "
+            "Find TVs on the network.\nTheir model, year, platform, and whether set up here. "
             "full=true asks every TV to answer; only when the owner asks for a full search."
         )
     )

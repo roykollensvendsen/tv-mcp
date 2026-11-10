@@ -297,7 +297,9 @@ features add tools, so an unused feature or brand costs no tools and no
 description text. The settings file lists them under `[features] enabled`.
 Without that list, the owner gets the small default set: `status` today, then
 `media` (search and play) once it exists. `setup`, `power` and anything extra
-are opt-in. Tool descriptions are kept to one line.
+are opt-in. Tool descriptions are kept short, and each opens with one short
+sentence on its own line, which is all the voice sees of a tool it has not
+loaded yet (`tests/test_tool_openings.py`).
 `tests/test_context_budget.py` holds the default set to a fixed number of
 tools and characters (4 tools and 1511 characters today: status, search, play (from where it stopped, or from the start) and pause/resume/stop/seek/mute/unmute/volume, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
 either does it on purpose, in its own pull request.

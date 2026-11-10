@@ -15,7 +15,8 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     """Add ``tv_scene``."""
 
     @server.tool(
-        description="The subtitle lines within some minutes of where a TV's film is, and its cast,"
+        description="What happens in the film.\n"
+        "The subtitle lines within some minutes of where a TV's film is, and its cast,"
         " to say what is happening or who speaks. Sum them up; never read them out. With chapters,"
         " also the film's chapters or an outline, to find a scene and seek to its time."
     )

@@ -17,15 +17,13 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     """Add ``tv_power_request`` and ``tv_power_confirm``."""
     power = PowerService(service)
 
-    @server.tool(
-        description="Ask before switching a TV on or off: read 'say' aloud; nothing is switched yet."
-    )
+    @server.tool(description="Ask to switch on or off.\nRead 'say' aloud; nothing is switched yet.")
     async def tv_power_request(state: Literal["on", "off"], tv: str) -> dict[str, Any]:
         answer = await power.request(state, tv)
         return {"success": answer["outcome"] == "question", "simulated": simulated, **answer}
 
     @server.tool(
-        description="Switch, with the token from tv_power_request, only after the owner's clear yes."
+        description="Switch after a clear yes.\nWith the token from tv_power_request, once the owner said it."
     )
     async def tv_power_confirm(token: str) -> dict[str, Any]:
         answer = await power.confirm(token)

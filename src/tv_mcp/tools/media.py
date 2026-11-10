@@ -21,7 +21,7 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
         _register_films(server, service, simulated)
 
     @server.tool(
-        description="Pause, resume, stop, seek, mute, unmute or volume on a TV; seek to seconds,"
+        description="Pause, seek or mute.\nAlso resume, stop, unmute or volume; seek to seconds,"
         " volume to level 0-100, by them if relative."
     )
     async def tv_control(
@@ -46,13 +46,13 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
 def _register_films(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
     """Search and play the owner's films."""
 
-    @server.tool(description="Find films and episodes by title.")
+    @server.tool(description="Look up films by title.")
     async def tv_search(title: str) -> dict[str, Any]:
         found = await service.search(title)
         say = found.get("say") or items_line(title, found["items"])
         return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
 
-    @server.tool(description="Play a film or episode on a TV, from where it stopped.")
+    @server.tool(description="Start a film on a TV.\nOr an episode, from where it stopped.")
     async def tv_play(title: str, tv: str, from_start: bool = False) -> dict[str, Any]:  # noqa: FBT001, FBT002
         answer = await service.play(title, tv, from_start=from_start)
         return {"success": answer["outcome"] == "playing", "simulated": simulated, **answer}
@@ -61,7 +61,10 @@ def _register_films(server: MCPServer[Any], service: TvService, simulated: bool)
 def _register_with_youtube(server: MCPServer[Any], service: TvService, simulated: bool) -> None:  # noqa: FBT001
     """Search and play with a source: the owner's films, or YouTube."""
 
-    @server.tool(description="Find films and episodes by title, or YouTube videos with source youtube.")
+    @server.tool(
+        description="Look up films or videos.\nFilms and episodes by title,"
+        " or YouTube videos with source youtube."
+    )
     async def tv_search(title: str, source: Literal["jellyfin", "youtube"] = "jellyfin") -> dict[str, Any]:
         if source == "youtube":
             found = await service.search_youtube(title)
@@ -71,8 +74,8 @@ def _register_with_youtube(server: MCPServer[Any], service: TvService, simulated
         return {"success": "say" not in found, "say": say, "simulated": simulated, **found}
 
     @server.tool(
-        description="Play a film or episode on a TV, from where it stopped; with source youtube,"
-        " a video by its id or words."
+        description="Start a film or video.\nA film or episode on a TV, from where it stopped;"
+        " with source youtube, a video by its id or words."
     )
     async def tv_play(
         title: str,
