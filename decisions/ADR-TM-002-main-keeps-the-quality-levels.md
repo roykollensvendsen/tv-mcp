@@ -2,8 +2,9 @@
 
 ## Status
 
-Proposed, 2026-11-10, waiting for the owner's yes, which merging the pull
-request that adds it gives. It takes over claude-voice's
+Accepted 2026-11-10: the owner accepted rule 16 of the voice plugins' shared
+standard (claude-voice docs/plugin-standard.md) that day, and this follows it.
+It takes over claude-voice's
 [ADR-CV-009](https://github.com/roykollensvendsen/claude-voice/blob/main/decisions/ADR-CV-009-main-keeps-the-quality-levels.md),
 accepted there the same day, and adapts it to this repository.
 
