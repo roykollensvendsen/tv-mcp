@@ -144,7 +144,9 @@ class PowerService:
             if self._clock() - watched_from >= SETTLE - 1:
                 break
             await self._sleep(1.0)
-        return {
-            "outcome": "unverified",
-            "say": f"I sent it, but {pending.tv.spoken} is not {wanted} yet.",
-        }
+        if pending.on and self._waker(pending.tv) is not None:
+            # Woken over HDMI, a TV may take a minute to come on and may never say so in time.
+            say = f"I asked {pending.tv.spoken} to switch on; it can take a minute before it is on."
+        else:
+            say = f"I sent it, but {pending.tv.spoken} is not {wanted} yet."
+        return {"outcome": "unverified", "say": say}

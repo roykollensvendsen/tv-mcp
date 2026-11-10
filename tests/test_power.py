@@ -281,3 +281,24 @@ def test_the_screen_counts_as_on_when_the_device_in_it_says_so_before_the_tv_ans
     cast.screen_on = lit
     power = _power_with_cast(tv_driver, cast)
     assert _run(power.request("on", "the garage"))["outcome"] == "refused"
+
+
+def test_a_tv_woken_by_cec_that_is_not_seen_on_in_time_is_said_to_be_on_its_way():
+    # 2026-11-10: the garage TV woke, but answered on the network only after about 75 s,
+    # and its Chromecast kept saying standby; "not on yet" sounded like a failure.
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+
+    async def wakes_slowly(address):
+        cast.woken.append(address)
+        return True
+
+    async def cannot_tell(address):
+        return None
+
+    cast.wake_screen, cast.screen_on = wakes_slowly, cannot_tell
+    power = _power_with_cast(tv_driver, cast)
+    _run(power.request("on", "the garage"))
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "unverified"
+    assert answer["say"] == "I asked the garage to switch on; it can take a minute before it is on."

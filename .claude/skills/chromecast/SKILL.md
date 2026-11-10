@@ -57,8 +57,10 @@ Tested on a Chromecast ("Garasje") in a 2012 Samsung UE40ES6715, 2026-11-09.
    on this way (`wake_screen`); off still goes through the TV's own driver,
    since a Chromecast can never switch its TV off. HDMI also tells the
    Chromecast whether the TV is in standby (`is_stand_by` in its status,
-   `screen_on`); that was seen to read True in standby, and is read as on long
-   before the TV itself answers on the network (about a minute on that set).
+   `screen_on`), but not every TV says: the garage set left it True while on
+   (2026-11-10). It then came on the network about 75 s after the wake, past
+   the voice's 30 s, so the voice says it can take a minute rather than "not
+   on yet".
 
 ## Setting one up
 
