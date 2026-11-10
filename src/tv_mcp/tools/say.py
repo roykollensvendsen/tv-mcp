@@ -27,6 +27,16 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
     return " ".join(lines)
 
 
+def waited_lines(reports: list[dict[str, Any]], tv: str | None, wanted: str, *, reached: bool) -> str:
+    """What a wait for a TV found, and to ask again when it is not there yet."""
+    if not reports:
+        return f"I could not read {tv} in time. Ask me to wait again."
+    say = tv_lines(reports)
+    if reached or any(r["state"] == "refused" for r in reports):
+        return say
+    return f"{say} It is not {wanted} yet. Ask me to wait again."
+
+
 def _screen(report: dict[str, Any]) -> str:
     """Whether the TV itself is on, when status reads a device that plays to it."""
     return f", the TV itself is {report['screen']}" if report.get("screen") else ""
