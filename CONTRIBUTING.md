@@ -33,6 +33,17 @@ Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
 way to learn that the gates are not a ritual performed once.
 
+CI also scans every commit in the history for keys, tokens and passwords with
+[gitleaks](https://github.com/gitleaks/gitleaks), the `secrets` job in
+`.github/workflows/checks.yml`. A secret deleted in a later commit is still in
+every clone, so the whole history is scanned, not only the change. It needs
+Docker, so it is not one of the lines above. Run the same scan locally with:
+
+<!-- not run: needs Docker and pulls an image -->
+```
+docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.30.1 detect --source /repo --redact --no-banner
+```
+
 ## How a change is made
 
 1. **Decide before you build.** A choice that costs more to reverse than to
