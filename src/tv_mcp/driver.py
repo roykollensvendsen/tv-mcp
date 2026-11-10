@@ -108,12 +108,33 @@ class Switches(Protocol):
 INPUTS = {"hdmi1": "HDMI 1", "hdmi2": "HDMI 2", "hdmi3": "HDMI 3", "hdmi4": "HDMI 4", "tv": "the aerial"}
 
 
+@dataclass(frozen=True)
+class InputSent:
+    """What changing a TV's input did."""
+
+    #: The input that was sent, said aloud, such as "HDMI 3" or "the next HDMI input".
+    said: str
+    #: What the TV was read back showing afterwards; None when it cannot tell.
+    shown: str | None = None
+    #: Nothing is plugged into that input, so it was not sent.
+    unplugged: bool = False
+
+
+@runtime_checkable
+class ReadsInput(Protocol):
+    """A driver that can tell which input its TV shows."""
+
+    async def input_shown(self, tv: Tv) -> str | None:
+        """The input `tv` shows, said aloud, such as "HDMI 1"; None when it cannot tell."""
+        ...
+
+
 @runtime_checkable
 class ChangesInput(Protocol):
     """A driver that can change which input its TV shows."""
 
-    async def show_input(self, tv: Tv, source: str) -> bool:
-        """Show `source`, one of ``INPUTS``, on `tv`; False when it did not answer."""
+    async def show_input(self, tv: Tv, source: str) -> InputSent | None:
+        """Send `source`, one of ``INPUTS``, to `tv`: what it did, or None when it did not answer."""
         ...
 
 

@@ -13,7 +13,16 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from tv_mcp.driver import DONE, INPUTS, UNSUPPORTED, ChangesInput, HasPlayer, HasSound, ShowsYouTube
+from tv_mcp.driver import (
+    DONE,
+    INPUTS,
+    UNSUPPORTED,
+    ChangesInput,
+    HasPlayer,
+    HasSound,
+    ReadsInput,
+    ShowsYouTube,
+)
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
 from tv_mcp.video import Video, is_video_id
@@ -21,7 +30,7 @@ from tv_mcp.video import Video, is_video_id
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from tv_mcp.driver import Casts, ClosesApps, Driver, OpensApps, Playing, TvInfo
+    from tv_mcp.driver import Casts, ClosesApps, Driver, InputSent, OpensApps, Playing, TvInfo
     from tv_mcp.media import Cue, MediaItem, MediaLibrary, Session
     from tv_mcp.video import Lounge, VideoSearch
 
@@ -225,7 +234,19 @@ class TvService:
                 await self._add_playing(tv, report, sessions)
                 await self._add_sound(tv, report)
             await self._add_screen(tv, report)
+            if not tv.hands_off:
+                await self._add_input(tv, report)
         return reports
+
+    async def _add_input(self, tv: Tv, report: dict[str, Any]) -> None:
+        """Add which input the TV shows, when it can say and is on."""
+        found = self._input_driver(tv, ReadsInput)
+        # The screen's own state when another device plays to it, so a TV in standby is not asked.
+        if found is None or report.get("screen", report.get("state")) != "on":
+            return
+        driver, target = found
+        if shown := await cast("ReadsInput", driver).input_shown(target):
+            report["input"] = shown
 
     async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add whether the TV itself is on, when another device (a Chromecast) plays to it.
@@ -431,16 +452,26 @@ class TvService:
         if wanted not in INPUTS:
             listed = ", ".join(INPUTS.values())
             return _refused(f"I can show {listed}, not {source!r}.")
-        driver, target = self.drivers.get(tv.driver), tv
-        if not isinstance(driver, ChangesInput) and tv.power_driver:
-            driver, target = self.drivers.get(tv.power_driver), replace(tv, address=tv.power_address)
-        if not isinstance(driver, ChangesInput):
+        found = self._input_driver(tv, ChangesInput)
+        if found is None:
             return _refused(f"{_capital(tv.spoken)} cannot change input from here.")
         if wrong := await self._itself(tv):
             return wrong
-        if not await driver.show_input(target, wanted):
+        driver, target = found
+        sent = await cast("ChangesInput", driver).show_input(target, wanted)
+        if sent is None:
             return _refused(f"{_capital(tv.spoken)} did not answer. Is it on?")
-        return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {INPUTS[wanted]} now."}
+        return _input_answer(tv, sent)
+
+    def _input_driver(self, tv: Tv, kind: type) -> tuple[Any, Tv] | None:
+        """The driver that does `kind` for `tv`, at the address it uses: its own, or its power driver."""
+        driver = self.drivers.get(tv.driver)
+        if isinstance(driver, kind):
+            return driver, tv
+        power = self.drivers.get(tv.power_driver) if tv.power_driver else None
+        if isinstance(power, kind):
+            return power, replace(tv, address=tv.power_address)
+        return None
 
     async def close_app(self, app: str, name: str) -> dict[str, Any]:
         """Close `app` on the TV called `name`."""
@@ -714,6 +745,24 @@ def _known(tv: Tv | None) -> dict[str, Any]:
         return {"tv": None}
     said = {"tv": tv.spoken, "description": tv.description, "brand": tv.brand, "model": tv.model}
     return {k: v for k, v in said.items() if v is not None or k == "tv"}
+
+
+def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
+    """What to say once an input was sent: seen, not seen, or not knowable."""
+    if sent.unplugged:
+        now = f"; it still shows {sent.shown}" if sent.shown else ""
+        return _refused(f"Nothing is plugged into {sent.said} on {tv.spoken}{now}.")
+    if sent.shown is None:
+        return {
+            "outcome": "done",
+            "say": f"I sent {sent.said} to {tv.spoken}; say if the picture did not change.",
+        }
+    if sent.shown == sent.said:
+        return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {sent.said} now."}
+    return {
+        "outcome": "unverified",
+        "say": f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}.",
+    }
 
 
 def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:

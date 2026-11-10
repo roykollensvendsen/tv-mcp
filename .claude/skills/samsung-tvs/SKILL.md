@@ -90,6 +90,15 @@ up with `on = "cec"` (see the `chromecast` skill). On a cable its address and
 MAC differ from Wi-Fi's, and it takes about half a minute after switching on
 to answer on the network.
 
+Inputs (measured on a UE40ES6715, 2026-11-10): the remote port ignores
+`KEY_HDMI1` and the like without a word. `KEY_HDMI` goes from the aerial to the
+first HDMI input with something plugged in, and then steps between those. The
+better way is Samsung's MainTVAgent2 on port 7676 (its control page is found
+among the numbered `/smp_N_` pages): `GetSourceList` lists every input with its
+id and whether anything is plugged in, `GetCurrentExternalSource` says which one
+shows, and `SetMainTVSource` (Source, ID, UiID -1) picks one, with no "allow"
+question. Read back after about two seconds to know it took.
+
 ## Adding a family
 
 Copy the 2022 sub-skill's shape into `samsung-tvs-<year>-<family>/`, write

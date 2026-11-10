@@ -32,7 +32,18 @@ LONGEST = {
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
     ),
-    "change input, a TV before Tizen": samsung_tizen.TIMEOUT + samsung_legacy.ANSWER_WAIT,
+    "change input, a TV before Tizen, by its keys when it lists no inputs": (
+        samsung_tizen.TIMEOUT
+        + samsung_legacy.FIND_WAIT
+        + samsung_legacy.AGENT_WAIT
+        + samsung_legacy.ANSWER_WAIT
+    ),
+    "change input, a TV before Tizen, picked and read back": (
+        samsung_tizen.TIMEOUT
+        + samsung_legacy.FIND_WAIT
+        + 3 * samsung_legacy.AGENT_WAIT
+        + samsung_legacy.INPUT_SETTLE
+    ),
     "change input, by the paired remote": samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (

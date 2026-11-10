@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 import httpx
 
-from tv_mcp.driver import DONE, NO_ANSWER, UNSUPPORTED, Playing, TvInfo
+from tv_mcp.driver import DONE, INPUTS, NO_ANSWER, UNSUPPORTED, InputSent, Playing, TvInfo
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -295,11 +295,11 @@ class SamsungTizen:
             return False
         return True
 
-    async def show_input(self, tv: Tv, source: str) -> bool:
+    async def show_input(self, tv: Tv, source: str) -> InputSent | None:
         """Press the input's own key, such as KEY_HDMI1, over the paired connection."""
-        if tv.address is None:
-            return False
-        return await self._press(tv.address, tv.key, f"KEY_{source.upper()}")
+        if tv.address is None or not await self._press(tv.address, tv.key, f"KEY_{source.upper()}"):
+            return None
+        return InputSent(said=INPUTS[source])
 
     async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Switch `tv` on or off.
