@@ -33,6 +33,8 @@ LONGEST = {
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
     ),
+    "change input, a TV before Tizen": samsung_tizen.TIMEOUT + samsung_legacy.ANSWER_WAIT,
+    "change input, by the paired remote": samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
     "play a YouTube video": pytest.param(youtube.START_WAIT * youtube.START_TRIES, marks=OVER),
     "play a YouTube video, opening YouTube first": pytest.param(
         samsung_tizen.YOUTUBE_TRIES + youtube.START_WAIT * youtube.START_TRIES, marks=OVER
