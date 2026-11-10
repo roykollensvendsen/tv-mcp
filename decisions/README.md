@@ -30,6 +30,7 @@ decision nobody writes down.
 | Id | Decides | Status |
 |---|---|---|
 | [ADR-TM-001](ADR-TM-001-reuse-samsungtvws-and-jellyfins-api.md) | Reuse samsungtvws and Jellyfin's own API rather than write either | Proposed |
+| [ADR-TM-002](ADR-TM-002-main-keeps-the-quality-levels.md) | Main keeps the quality levels, so a pull request never records them | Proposed |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing

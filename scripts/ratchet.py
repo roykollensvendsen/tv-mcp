@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The quality ratchet: the code may get better or stay as it is, never worse unless a change says why.
+
+It measures test coverage, the share of rules whose own test notices them switched off, the
+number of tests, lint and type errors, import cycles among the modules, copied code, and the
+most tangled function in each module, and compares them with the levels main reached. A
+change that makes one worse fails, unless its pull request has a line of its own
+
+    Ratchet-Exception: coverage - the reason
+
+naming the measure. Main keeps its levels: continuous integration measures them after every
+push to main and keeps them with that run, so a pull request never records them
+(ADR-TM-002, after claude-voice's ADR-CV-009). When those levels are missing, the base is
+measured in a copy of it, which takes as long again. `quality.json` holds only the suite's
+time budget, a limit set by hand.
+
+    uv run python scripts/ratchet.py check --base REF   # measure and compare with REF
+    uv run python scripts/ratchet.py check --base REF --levels FILE --out FILE
+    uv run python scripts/ratchet.py measure --out FILE  # measure only
+
+`check` reads exceptions from the environment variable RATCHET_EXCEPTIONS (continuous
+integration passes the pull request's text). `--skip-mutation` keeps the base's mutation
+figures, for a quick local look; continuous integration never skips it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# The tree to measure: this one, or a copy of the base named by RATCHET_ROOT (see measure_at).
+ROOT = Path(os.environ.get("RATCHET_ROOT") or Path(__file__).resolve().parent.parent)
+FILE = ROOT / "quality.json"
+SOURCE = ROOT / "src"
+PACKAGE = SOURCE / "tv_mcp"
+COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
+HIGHER = ("coverage", "mutation", "tests")
+LOWER = ("lint_errors", "type_errors", "cycles", "duplication")
+DEFAULT_BUDGET = {"seconds": 60, "tolerance": 0.25}
+NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
+BLOCK = 6  # lines in a row that count as a copied block
+EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
+TALLY = re.compile(r"(\d+)/(\d+) rules turned off")
+
+
+# -- measuring ---------------------------------------------------------------------------
+
+DECISIONS = (
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.ExceptHandler,
+    ast.IfExp,
+    ast.Assert,
+    ast.match_case,
+)
+NESTED = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def _function_complexity(fn: ast.AST) -> int:
+    """McCabe's count for one function, leaving out the functions defined inside it."""
+    count = 1
+    stack = list(ast.iter_child_nodes(fn))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, NESTED):
+            continue
+        if isinstance(node, DECISIONS):
+            count += 1
+        elif isinstance(node, ast.BoolOp):
+            count += len(node.values) - 1
+        elif isinstance(node, ast.comprehension):
+            count += 1 + len(node.ifs)
+        stack.extend(ast.iter_child_nodes(node))
+    return count
+
+
+def complexity(folder: Path) -> dict[str, int]:
+    """The most tangled function in each module under `folder`, by McCabe's count."""
+    out = {}
+    for path in sorted(folder.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        functions = (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+        scores = [_function_complexity(n) for n in functions]
+        if scores:
+            out[path.relative_to(folder).as_posix()] = max(scores)
+    return out
+
+
+def _modules(package_dir: Path) -> dict[str, Path]:
+    """Every module in the package by its dotted name inside it; a subpackage is its __init__."""
+    found = {}
+    for path in sorted(package_dir.rglob("*.py")):
+        parts = path.relative_to(package_dir).with_suffix("").parts
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts:  # the package's own __init__ is where every import starts, not a module in a circle
+            found[".".join(parts)] = path
+    return found
+
+
+def _resolve(target: str, names: set[str], imported: list[str]) -> set[str]:
+    """The modules an import of `imported` names from `target` reaches, inside the package."""
+    found = set()
+    for name in imported:
+        full = f"{target}.{name}" if target else name
+        if full in names:
+            found.add(full)
+        elif target in names:
+            found.add(target)
+    return found
+
+
+def _imports(name: str, path: Path, package: str, names: set[str]) -> set[str]:
+    """The package's modules `path` imports when it is loaded (not inside a function or an if)."""
+    here = name.split(".") if path.stem == "__init__" else name.split(".")[:-1]
+    found: set[str] = set()
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                if node.level - 1 > len(here):
+                    continue
+                parts = here[: len(here) - (node.level - 1)] + (node.module.split(".") if node.module else [])
+            elif node.module and (node.module == package or node.module.startswith(package + ".")):
+                parts = node.module.split(".")[1:]
+            else:
+                continue
+            found |= _resolve(".".join(parts), names, [alias.name for alias in node.names])
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == package:
+                    prefixes = (".".join(parts[1:i]) for i in range(len(parts), 1, -1))
+                    found |= {next((p for p in prefixes if p in names), "")} & names
+    return found - {name}
+
+
+def cycles(package_dir: Path) -> int:
+    """How many groups of modules import each other in a circle when they load."""
+    modules = _modules(package_dir)
+    names = set(modules)
+    graph = {n: _imports(n, p, package_dir.name, names) for n, p in modules.items()}
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    groups = 0
+
+    def visit(node: str) -> None:  # Tarjan's strongly connected components
+        nonlocal groups
+        index[node] = low[node] = len(index)
+        stack.append(node)
+        on_stack.add(node)
+        for nxt in sorted(graph[node]):
+            if nxt not in index:
+                visit(nxt)
+                low[node] = min(low[node], low[nxt])
+            elif nxt in on_stack:
+                low[node] = min(low[node], index[nxt])
+        if low[node] == index[node]:
+            size = 0
+            while True:
+                top = stack.pop()
+                on_stack.discard(top)
+                size += 1
+                if top == node:
+                    break
+            groups += size > 1
+
+    for name in sorted(names):
+        if name not in index:
+            visit(name)
+    return groups
+
+
+def duplication(folder: Path) -> float:
+    """The share of non-blank source lines, in percent, in a copied block.
+
+    A copied block is BLOCK or more lines appearing more than once, within a file or across
+    files, ignoring indentation.
+    """
+    files = {
+        p: [" ".join(line.split()) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+        for p in sorted(folder.rglob("*.py"))
+    }
+    where: dict[tuple[str, ...], list[tuple[Path, int]]] = {}
+    for path, lines in files.items():
+        for i in range(len(lines) - BLOCK + 1):
+            where.setdefault(tuple(lines[i : i + BLOCK]), []).append((path, i))
+    copied = {
+        (p, j) for spots in where.values() if len(spots) > 1 for p, i in spots for j in range(i, i + BLOCK)
+    }
+    total = sum(len(lines) for lines in files.values())
+    return round(100 * len(copied) / total, 2) if total else 0.0
+
+
+def mutation_tally(output: str, returncode: int) -> dict[str, int]:
+    """Read `scripts/mutate.py`'s last line; a run that failed is never a full score."""
+    tally = TALLY.search(output)
+    killed, total = (int(tally[1]), int(tally[2])) if tally else (0, 1)
+    return {"killed": killed if returncode == 0 else min(killed, total - 1), "total": total}
+
+
+def _run(
+    *command: str,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)  # noqa: S603
+
+
+def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Every measure, from the tree as it is."""
+    with tempfile.TemporaryDirectory() as tmp:
+        report = Path(tmp) / "coverage.json"
+        started = time.monotonic()
+        suite = _run(
+            "uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}"
+        )
+        seconds = round(time.monotonic() - started, 1)
+        if suite.returncode:
+            raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
+        coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
+    passed = re.search(r"(\d+) passed", suite.stdout)
+    lint = _run("uv", "run", "ruff", "check", ".", "--output-format", "json")
+    types = _run("uv", "run", "mypy", "src")
+    type_errors = re.search(r"Found (\d+) errors?", types.stdout)
+    if skip_mutation and recorded:
+        mutation = recorded["mutation"]
+    else:
+        mutate = _run("uv", "run", "python", "scripts/mutate.py")
+        mutation = mutation_tally(mutate.stdout, mutate.returncode)
+    return {
+        "coverage": coverage,
+        "mutation": mutation,
+        "tests": int(passed[1]) if passed else 0,
+        "lint_errors": len(json.loads(lint.stdout or "[]")),
+        "type_errors": int(type_errors[1]) if type_errors else 0,
+        "cycles": cycles(PACKAGE),
+        "duplication": duplication(SOURCE),
+        "complexity": complexity(SOURCE),
+        "test_seconds": seconds,
+        "test_budget": None,
+    }
+
+
+# -- comparing ---------------------------------------------------------------------------
+
+
+def _score(value: Any) -> float:  # noqa: ANN401 - a level is a number or the mutation tally
+    if isinstance(value, dict):  # mutation: the share of rules whose test noticed
+        return 100.0 * value["killed"] / max(value["total"], 1)
+    return float(value)
+
+
+def _worse(metric: str, base: Any, now: Any) -> bool:  # noqa: ANN401
+    wobble = COVERAGE_WOBBLE if metric == "coverage" else 0.0
+    if metric in HIGHER:
+        return _score(now) < _score(base) - wobble
+    return _score(now) > _score(base)
+
+
+def _complexity_problems(base: dict[str, int], now: dict[str, int]) -> list[str]:
+    found = []
+    for module, score in now.items():
+        before = base.get(module)
+        if before is not None and score > before:
+            found.append(f"complexity of {module} got worse: {before} -> {score}")
+        if before is None and score > NEW_MODULE_CEILING:
+            found.append(
+                f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}"
+            )
+    return found
+
+
+def compare(
+    base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget: dict[str, Any]
+) -> list[str]:
+    """What is wrong: a measure worse than the base without an exception, or the suite over its budget.
+
+    Better levels need no recording: main measures its own.
+    """
+    found = []
+    for metric in (*HIGHER, *LOWER):
+        if metric not in base:
+            continue  # a measure added since the base: nothing to compare with yet
+        # RULE: a measure that gets worse fails the check
+        if _worse(metric, base[metric], now[metric]) and metric not in allowed:
+            found.append(f"{metric} got worse: {base[metric]} -> {now[metric]}")
+    if "complexity" not in allowed:
+        found += _complexity_problems(base.get("complexity", {}), now["complexity"])
+    limit = budget["seconds"] * (1 + budget["tolerance"])
+    if now["test_seconds"] > limit:
+        found.append(
+            f"test_seconds is {now['test_seconds']}, over the budget of {budget['seconds']}"
+            f" (+{budget['tolerance']:.0%})",
+        )
+    return found
+
+
+def exceptions(text: str | None) -> set[str]:
+    """The measures a pull request allows to get worse, each on a `Ratchet-Exception:` line."""
+    return {m.lower() for m in EXCEPTION.findall(text or "")}
+
+
+def budget(path: Path) -> dict[str, Any]:
+    """The suite's time budget, the one thing `quality.json` keeps."""
+    try:
+        return dict(json.loads(path.read_text())["test_budget"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return dict(DEFAULT_BUDGET)
+
+
+def write_levels(path: Path, now: dict[str, Any]) -> None:
+    """Write the measured levels, for main to keep with its run."""
+    levels = {k: v for k, v in now.items() if k != "test_budget"}
+    path.write_text(json.dumps(levels, indent=2, sort_keys=True) + "\n")
+
+
+def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Main's kept levels for the base, or, when they are missing, the base measured."""
+    try:
+        levels = json.loads(kept.read_text()) if kept else None
+    except (OSError, ValueError):
+        levels = None
+    if isinstance(levels, dict) and "coverage" in levels:
+        return levels
+    # RULE: when the levels main kept are missing, the base is measured
+    return measure_base()
+
+
+def measure_at(ref: str) -> dict[str, Any]:
+    """Measure `ref` in a copy of it, with this ratchet, so both sides are measured alike.
+
+    The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
+    and is pointed at the copy, so the base is measured exactly as it stands.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
+        added = _run("git", "worktree", "add", "--detach", str(copy), ref)
+        if added.returncode:
+            msg = f"Cannot check out {ref} to measure it:\n{added.stderr}"
+            raise SystemExit(msg)
+        try:
+            synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy)
+            if synced.returncode:
+                msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
+                raise SystemExit(msg)
+            env = {**os.environ, "RATCHET_ROOT": str(copy)}
+            here = str(Path(__file__).resolve())
+            measured = _run("uv", "run", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
+            if measured.returncode:
+                msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
+                raise SystemExit(msg)
+            return dict(json.loads(out.read_text()))
+        finally:
+            _run("git", "worktree", "remove", "--force", str(copy))
+
+
+def main() -> int:
+    """Measure, or measure and compare with the base."""
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("action", choices=("check", "measure"))
+    parser.add_argument("--base", help="the git ref to compare with, usually origin/main")
+    parser.add_argument("--levels", type=Path, help="main's kept levels for the base, if there are any")
+    parser.add_argument("--out", type=Path, help="where to write the levels measured now")
+    parser.add_argument("--skip-mutation", action="store_true")
+    args = parser.parse_args()
+    if args.action == "measure":
+        now = measure()
+        if args.out:
+            write_levels(args.out, now)
+        sys.stdout.write(json.dumps(now, indent=2, sort_keys=True) + "\n")
+        return 0
+    if not args.base:
+        sys.stderr.write("check needs --base, the ref to compare with (usually origin/main).\n")
+        return 1
+    base = base_levels(args.levels, lambda: measure_at(args.base))
+    now = measure(skip_mutation=args.skip_mutation, recorded=base)
+    if args.out:
+        write_levels(args.out, now)
+    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS")), budget(FILE))
+    for problem in found:
+        sys.stderr.write(problem + "\n")
+    if not found:
+        sys.stdout.write("The ratchet holds: nothing got worse than the base.\n")
+    sys.stdout.write(json.dumps({k: v for k, v in now.items() if k != "complexity"}, sort_keys=True) + "\n")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
