@@ -21,7 +21,8 @@ time budget, a limit set by hand.
 
 `check` reads exceptions from the environment variable RATCHET_EXCEPTIONS (continuous
 integration passes the pull request's text). `--skip-mutation` keeps the base's mutation
-figures, for a quick local look; continuous integration never skips it.
+figures. A pull request's check in continuous integration skips it, because the
+`mutation` job already demands a full score there; main's own run never skips it.
 """
 
 from __future__ import annotations

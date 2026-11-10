@@ -103,10 +103,12 @@ jobs:
         run: uv run python scripts/mutate.py
 
   # The quality ratchet: no level gets worse than main's without a Ratchet-Exception
-  # line in the pull request. It runs scripts/mutate.py itself, for the mutation level.
+  # line in the pull request. On a pull request it keeps main's mutation figures, since
+  # the mutation job above already requires every rule's own test to fail, with no
+  # exception; a push to main measures them, so the figures stay true.
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20          # about two minutes, or four when the base has to be measured too
+    timeout-minutes: 20          # about a minute, or three when the base has to be measured too
     permissions:
       contents: read
       actions: read              # to fetch the levels main kept with its own run
@@ -143,7 +145,7 @@ jobs:
         env:                     # the pull request's text, for its Ratchet-Exception lines
           RATCHET_EXCEPTIONS: ${{ github.event.pull_request.body }}
           LEVELS: ${{ runner.temp }}/base/levels.json
-        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS"
+        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS" --skip-mutation
       # Every pull request passed the check against the main before it, so main
       # only measures, and keeps what it measured for the next pull request.
       - name: The levels main reached
