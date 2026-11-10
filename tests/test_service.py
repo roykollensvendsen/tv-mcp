@@ -154,3 +154,32 @@ def test_a_tv_that_answers_as_another_device_is_not_acted_on():
     first, second = asyncio.run(_service(network, kitchen, office).status(None))
     assert first["state"] == second["state"] == ANOTHER_TV
     assert "kitchen" in first["say"]
+
+
+def test_a_tv_that_does_not_answer_is_not_asked_what_it_plays_or_how_loud_it_is():
+    # 2026-11-10: with both living-room TVs off, status waited 12 s for what
+    # played and 3 s for the volume on each, so the voice only heard "working".
+    class Quiet(FakeNetwork):
+        async def playing(self, address):
+            self.asked.append("playing")
+
+        async def player(self, tv, command, seconds=None):
+            return ""
+
+        async def volume(self, address):
+            self.asked.append("volume")
+
+        async def muted(self, address):
+            return None
+
+        async def set_volume(self, address, level):
+            return False
+
+        async def set_mute(self, address, *, on):
+            return False
+
+    network = Quiet({})
+    [report] = asyncio.run(_service(network, LIVING).status(None))
+    assert report["state"] == "off or not reachable"
+    assert "playing" not in network.asked
+    assert "volume" not in network.asked

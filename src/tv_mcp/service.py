@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from tv_mcp.video import Lounge, VideoSearch
 
 LEFT_ALONE = "left alone"
+#: The state of a TV that did not answer: off, or not on the network.
+UNREACHABLE = "off or not reachable"
 ANOTHER_TV = "another TV answers there"
 
 
@@ -230,7 +232,8 @@ class TvService:
         reports = [await self._read(tv) for tv in tvs]
         sessions = await self.library.sessions() if self.library else []
         for tv, report in zip(tvs, reports, strict=True):
-            if not tv.hands_off:
+            # RULE: a TV that does not answer is not asked what it plays or how loud it is
+            if not tv.hands_off and report["state"] != UNREACHABLE:
                 await self._add_playing(tv, report, sessions)
                 await self._add_sound(tv, report)
             await self._add_screen(tv, report)
@@ -801,7 +804,7 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
 def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:
     known = _known(tv)
     if info is None:
-        return {**known, "state": "off or not reachable"}
+        return {**known, "state": UNREACHABLE}
     state = info.power
     if state == "unknown":
         state = "reachable"  # it answers, but cannot tell whether its screen is on
