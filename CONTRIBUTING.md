@@ -32,7 +32,8 @@ uv run python scripts/ratchet.py check --base origin/main
 
 The ratchet takes about two minutes, most of it the mutation check, which
 switches every rule off in turn; `--skip-mutation` gives a quick look that keeps
-main's mutation figures.
+main's mutation figures. A pull request's check skips it too, since the
+`mutation` job already refuses any rule whose own test cannot fail.
 
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
