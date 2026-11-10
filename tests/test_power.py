@@ -68,7 +68,7 @@ def test_a_request_asks_a_question_and_switches_nothing():
     driver = PowerDriver("on")
     question = _run(_power(driver).request("off", "The Frame"))
     assert question["outcome"] == "question"
-    assert question["say"] == "Switch the living room off?"
+    assert question["say"] == "The living room is on. Do you want me to switch it off?"
     assert question["token"] == "token-0"  # noqa: S105 - a test token
     assert driver.switched == []
 
@@ -184,9 +184,11 @@ def test_a_tv_that_does_not_change_after_the_key_is_not_called_switched():
     assert driver.switched == [("living-room", False)]
 
 
-def test_a_switch_that_does_not_take_is_answered_within_the_voices_time_limit():
+def test_a_confirmed_switch_answers_once_within_the_voice_time():
     # 2026-11-09: switching the garage TV on hung past the voice's 30 seconds and came back as a raw error.
-    from tv_mcp.power import SETTLE  # noqa: PLC0415
+    # 2026-11-10: it answered "working", so whether it came on rested on someone asking again.
+    from tv_mcp.power import CONFIRM_WITHIN  # noqa: PLC0415
+    from tv_mcp.server import ANSWER_WITHIN  # noqa: PLC0415
 
     clock = Clock()
     service = TvService(
@@ -202,8 +204,38 @@ def test_a_switch_that_does_not_take_is_answered_within_the_voices_time_limit():
     started = clock.now
     answer = _run(power.confirm("token-0"))
     assert answer["outcome"] == "unverified"
-    assert clock.now - started <= SETTLE
-    assert SETTLE <= 15
+    assert clock.now - started <= CONFIRM_WITHIN
+    assert CONFIRM_WITHIN < ANSWER_WITHIN
+
+
+def test_every_power_question_states_the_tv_now_and_asks_what_i_should_do():
+    # 2026-11-10: "Switch garasjen off?" read aloud sounded like a command already carried out.
+    for now, wanted in (("on", "off"), ("standby", "on")):
+        question = _run(_power(PowerDriver(now)).request(wanted, "The Frame"))
+        state = "on" if now == "on" else "off"
+        assert question["say"].startswith(f"The living room is {state}."), question["say"]
+        assert f"Do you want me to switch it {wanted}?" in question["say"]
+
+
+def test_a_confirmed_switch_keeps_watching_the_tv_until_it_is_seen_in_its_new_state():
+    clock = Clock()
+    driver = PowerDriver("on", obeys=False)
+    service = TvService(Settings(tvs=(LIVING,)), drivers={"samsung-tizen": driver}, listen=_no_listen)
+    looks = 0
+
+    async def ticking(seconds):
+        nonlocal looks
+        clock.now += seconds
+        looks += 1
+        if looks == 6:  # the TV goes to standby six seconds after the key
+            driver.power = "standby"
+
+    tokens = iter(f"token-{n}" for n in range(9))
+    power = PowerService(service, clock=clock, new_token=lambda: next(tokens), sleep=ticking)
+    _run(power.request("off", "The Frame"))
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "done"
+    assert answer["say"] == "The living room is off now."
 
 
 class CastWithCec:
@@ -301,7 +333,10 @@ def test_a_tv_woken_by_cec_that_is_not_seen_on_in_time_is_said_to_be_on_its_way(
     _run(power.request("on", "the garage"))
     answer = _run(power.confirm("token-0"))
     assert answer["outcome"] == "unverified"
-    assert answer["say"] == "I asked the garage to switch on; it can take a minute before it is on."
+    assert answer["say"] == (
+        "I asked the garage to switch on; it can take a minute before it is on."
+        " Ask me to wait for it to be on."
+    )
 
 
 def test_a_token_is_kept_when_nothing_reached_the_tv():

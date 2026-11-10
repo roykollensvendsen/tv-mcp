@@ -8,6 +8,7 @@ the network is passed in, so the tests need neither a TV nor a network.
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import time
 from dataclasses import replace
@@ -71,6 +72,13 @@ SUBTITLE_WAIT = 5.0
 YOUTUBE_WAIT = 8.0
 #: How many films' subtitles are kept once pulled out, for the next question.
 SUBTITLES_KEPT = 4
+#: How long status waits for a TV to come on or go off, when asked to: inside
+#: server.ANSWER_WITHIN, so the voice hears the outcome and can ask to wait again.
+WAIT_WITHIN = 10.0
+#: How long status waits to hear which input a TV shows, before saying what it knows.
+INPUT_READ_WAIT = 3.0
+#: The states in which a TV's own screen is off.
+SCREEN_OFF = {"off", "standby", "standby or art mode", UNREACHABLE}
 
 
 class TvService:
@@ -241,6 +249,32 @@ class TvService:
                 await self._add_input(tv, report)
         return reports
 
+    async def wait_for(self, name: str | None, wanted: str) -> dict[str, Any]:
+        """Status of the TV called `name`, looked at once a second until it is `wanted`, for a while."""
+        if name is None:
+            return {
+                "reached": False,
+                "tvs": [{"tv": None, "state": "refused", "say": "Say which TV to wait for."}],
+            }
+        until = self._clock() + WAIT_WITHIN
+        reports: list[dict[str, Any]] = []
+        # RULE: a wait for a TV ends within the voice time
+        for _ in range(math.ceil(until - self._clock())):
+            if (left := until - self._clock()) <= 0:
+                break
+            try:
+                reports = await asyncio.wait_for(self.status(name), left)
+            except TimeoutError:
+                break
+            if any(r["state"] == "refused" for r in reports):
+                return {"reached": False, "tvs": reports}
+            if all(_shows(r, wanted) for r in reports):
+                return {"reached": True, "tvs": reports}
+            if until - self._clock() <= 1:
+                break
+            await self._sleep(1.0)
+        return {"reached": False, "tvs": reports}
+
     async def _add_input(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add which input the TV shows, when it can say and is on."""
         found = self._input_driver(tv, ReadsInput)
@@ -248,7 +282,11 @@ class TvService:
         if found is None or report.get("screen", report.get("state")) != "on":
             return
         driver, target = found
-        if shown := await cast("ReadsInput", driver).input_shown(target):
+        try:
+            shown = await asyncio.wait_for(cast("ReadsInput", driver).input_shown(target), INPUT_READ_WAIT)
+        except TimeoutError:
+            return  # just woken, it may not say yet; status answers with what it knows
+        if shown:
             report["input"] = shown
 
     async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
@@ -799,6 +837,12 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
         "outcome": "unverified",
         "say": f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}.",
     }
+
+
+def _shows(report: dict[str, Any], wanted: str) -> bool:
+    """Whether the TV in `report` is `wanted`, "on" or "off", by its own screen when known."""
+    now = report.get("screen") or report["state"]
+    return now == "on" if wanted == "on" else now in SCREEN_OFF
 
 
 def _report(tv: Tv | None, info: TvInfo | None) -> dict[str, Any]:

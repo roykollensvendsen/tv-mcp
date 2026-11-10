@@ -146,3 +146,15 @@ name = "a TV that does not answer is not asked what it plays or how loud it is"
 file = "src/tv_mcp/service.py"
 find = '            if not tv\.hands_off and report\["state"\] != UNREACHABLE:'
 replace = 'if not tv.hands_off:'
+
+[[rule]]
+name = "a confirmed switch answers once, within the voice time"
+file = "src/tv_mcp/power.py"
+find = '        until = started \+ CONFIRM_WITHIN'
+replace = 'until = started + 60 * CONFIRM_WITHIN'
+
+[[rule]]
+name = "a wait for a TV ends within the voice time"
+file = "src/tv_mcp/service.py"
+find = '        until = self\._clock\(\) \+ WAIT_WITHIN'
+replace = 'until = self._clock() + 60 * WAIT_WITHIN'

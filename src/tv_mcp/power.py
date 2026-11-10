@@ -10,6 +10,7 @@ voice's instructions, so no wording of a request can skip the question.
 from __future__ import annotations
 
 import asyncio
+import math
 import secrets
 import time
 from dataclasses import dataclass, replace
@@ -27,9 +28,10 @@ if TYPE_CHECKING:
 
 #: How long a question stays open, in seconds.
 EXPIRES = 30.0
-#: How many seconds to watch a TV for its new state after switching it; the
-#: voice gives a tool 30 seconds in all.
-SETTLE = 12
+#: How long a confirmed switch has, from the yes to its one final answer: the switch
+#: itself, then watching the TV until it is seen in its new state. It stays inside
+#: server.ANSWER_WITHIN, so the voice hears how it went rather than "working".
+CONFIRM_WITHIN = 10.0
 #: The words a request takes.
 STATES = ("on", "off")
 _OFF = {"standby", "standby or art mode", "off or not reachable"}
@@ -61,6 +63,8 @@ class PowerService:
         """Read and reach the TVs through `service`."""
         self._service, self._clock, self._new_token, self._sleep = service, clock, new_token, sleep
         self._pending: _Pending | None = None
+        #: Switches still on their way when a confirm had to answer.
+        self._running: set[asyncio.Future[bool]] = set()
 
     def _waker(self, tv: Tv) -> WakesScreen | None:
         """The device in `tv` that switches it on over HDMI, when it is set up to."""
@@ -127,10 +131,13 @@ class PowerService:
             )
         token = self._new_token()
         self._pending = _Pending(token, tv, state == "on", self._clock())
-        return {"outcome": "question", "say": f"Switch {tv.spoken} {state}?", "token": token}
+        # The state first, then the question: "Switch it off?" read aloud sounds like a command.
+        say = f"{tv.spoken.capitalize()} is {now}. Do you want me to switch it {state}?"
+        return {"outcome": "question", "say": say, "token": token}
 
     async def confirm(self, token: str) -> dict[str, Any]:
         """Switch, if `token` is from the latest question and nothing has changed since."""
+        started = self._clock()
         pending = self._pending
         # RULE: a power token works once
         if pending is None or not secrets.compare_digest(pending.token, token):
@@ -146,23 +153,45 @@ class PowerService:
                 f"{pending.tv.spoken.capitalize()} is already {wanted}; nothing was sent."
                 " Ask for the other way if you meant that."
             )
-        if not await self._switch(pending.tv, on=pending.on):
+        until = started + CONFIRM_WITHIN
+        switching = asyncio.ensure_future(self._switch(pending.tv, on=pending.on))
+        self._running.add(switching)
+        switching.add_done_callback(self._running.discard)
+        try:
+            # Shielded: a switch still on its way when time runs out carries on.
+            sent = await asyncio.wait_for(asyncio.shield(switching), max(until - self._clock(), 0.1))
+        except TimeoutError:
+            sent = True
+        if not sent:
             # Nothing reached the TV, so the yes still stands while the question is fresh.
             if self._pending is None:
                 self._pending = pending
             return _refused(
                 f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
             )
-        watched_from = self._clock()
-        for _ in range(SETTLE):
-            if await self._state(pending.tv) == wanted:
-                return {"outcome": "done", "say": f"{pending.tv.spoken.capitalize()} is {wanted} now."}
-            if self._clock() - watched_from >= SETTLE - 1:
-                break
-            await self._sleep(1.0)
+        if await self._seen(pending.tv, wanted, until=until):
+            return {"outcome": "done", "say": f"{pending.tv.spoken.capitalize()} is {wanted} now."}
+        wait = f" Ask me to wait for it to be {wanted}."
         if pending.on and self._waker(pending.tv) is not None:
             # Woken over HDMI, a TV may take a minute to come on and may never say so in time.
             say = f"I asked {pending.tv.spoken} to switch on; it can take a minute before it is on."
         else:
             say = f"I sent it, but {pending.tv.spoken} is not {wanted} yet."
-        return {"outcome": "unverified", "say": say}
+        return {"outcome": "unverified", "say": say + wait}
+
+    async def _seen(self, tv: Tv, wanted: str, *, until: float) -> bool:
+        """Whether `tv` is seen `wanted`, looking once a second until the clock reaches `until`."""
+        # RULE: a confirmed switch answers once, within the voice time
+        # At most one look a second, also when the clock is not real time.
+        for _ in range(math.ceil(until - self._clock())):
+            if (left := until - self._clock()) <= 0:
+                return False
+            try:
+                if await asyncio.wait_for(self._state(tv), left) == wanted:
+                    return True
+            except TimeoutError:
+                return False
+            if until - self._clock() <= 1:
+                return False
+            await self._sleep(1.0)
+        return False

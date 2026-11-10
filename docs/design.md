@@ -57,7 +57,7 @@ and `garage_confirm`.
 | Tool | Does | Safety |
 |---|---|---|
 | `tv_status` | whether each TV is on, in Art Mode or off, and what is playing | read-only |
-| `tv_power_request` | `tv_power_request(state, tv)`: a question to read aloud ("Switch the living room off?") and a one-time token; switches nothing | *asks* |
+| `tv_power_request` | `tv_power_request(state, tv)`: a question to read aloud ("The living room is on. Do you want me to switch it off?") and a one-time token; switches nothing | *asks* |
 | `tv_power_confirm` | `tv_power_confirm(token)`: switches, after the owner's yes. On: the power key when the TV still listens (standby or Art Mode), otherwise Wake-on-LAN. Off: on the Frame, the power key held for three seconds, since a short press only goes to Art Mode | the token works once, expires after 30 s, and only the latest question's counts; refused when the TV changed since the question |
 | `tv_confirm` | carries out the one action the token names | the token is used once and expires after a minute |
 | `tv_open_app` | `tv_open_app(app, tv)`: opens an app the driver knows by name (on Samsung: Jellyfin, Netflix, YouTube; NRK TV once its id is read from a real set). Part of the opt-in `apps` feature, with `tv_close_app` | only apps the driver knows; never on a hands-off TV; never switches a TV on |
@@ -302,7 +302,7 @@ are opt-in. Tool descriptions are kept short, and each opens with one short
 sentence on its own line, which is all the voice sees of a tool it has not
 loaded yet (`tests/test_tool_openings.py`).
 `tests/test_context_budget.py` holds the default set to a fixed number of
-tools and characters (4 tools and 1511 characters today: status, search, play (from where it stopped, or from the start) and pause/resume/stop/seek/mute/unmute/volume, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
+tools and characters (4 tools and 1683 characters today: status (which can wait for a TV to come on or go off), search, play (from where it stopped, or from the start) and pause/resume/stop/seek/mute/unmute/volume, with the instructions claude-voice passes on; closing an app is the opt-in `apps` feature). A change that raises
 either does it on purpose, in its own pull request.
 
 The repository is public (since 2026-11-10): GPL-3.0-or-later, and nothing
