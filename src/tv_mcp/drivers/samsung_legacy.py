@@ -70,16 +70,19 @@ def parse_sources(answer: str) -> dict[str, tuple[str, str]]:
     return found
 
 
+def _tag(block: str, tag: str) -> str:
+    """The text of one tag in a block of the TV's XML; empty when the tag is missing."""
+    found = re.search(rf"<{tag}>([^<]*)", block)
+    return found.group(1).strip() if found else ""
+
+
 def parse_devices(answer: str) -> dict[str, str | None]:
     """The inputs with something plugged in, leaving out the aerial, with the name each device gave."""
     found: dict[str, str | None] = {}
     for block in re.findall(r"<Source>(.*?)</Source>", html.unescape(answer), re.DOTALL):
-        kind, plugged, named = (
-            re.search(rf"<{tag}>([^<]*)", block) for tag in ("SourceType", "Connected", "DeviceName")
-        )
-        key = _input_key(kind.group(1)) if kind else ""
-        if plugged and plugged.group(1) == "Yes" and key in INPUTS and key != "tv":
-            found[key] = (named.group(1).strip() or None) if named else None
+        key = _input_key(_tag(block, "SourceType"))
+        if _tag(block, "Connected") == "Yes" and key in INPUTS and key != "tv":
+            found[key] = _tag(block, "DeviceName") or None
     return found
 
 
