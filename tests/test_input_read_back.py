@@ -42,6 +42,7 @@ def test_an_app_that_left_the_screen_is_said_but_not_the_input():
     assert answer["outcome"] == "unverified"
     assert answer["say"] == (
         "I sent HDMI 2 to upstairs. YouTube left the screen, but this TV cannot say which input is on screen."
+        " Look at the screen to be sure."
     )
 
 
@@ -57,7 +58,7 @@ def test_an_app_still_in_front_means_the_input_did_not_change():
 def test_an_input_change_the_tv_cannot_confirm_is_never_done():
     answer = _show(InputSent(said=INPUTS["hdmi2"]))
     assert answer["outcome"] == "unverified"
-    assert answer["say"].endswith("cannot say which input is on screen, so it is not confirmed.")
+    assert answer["say"].endswith("so it is not confirmed. Look at the screen to be sure.")
 
 
 def _tizen_tv(tmp_path, *, front, leaves):
@@ -124,4 +125,5 @@ def test_a_switch_the_tv_accepted_is_said_as_accepted_but_not_seen():
     assert answer["outcome"] == "unverified"
     assert (
         answer["say"] == "Upstairs accepted the switch to HDMI 2 (Game Box), but can't confirm the picture."
+        " Look at the screen to be sure."
     )

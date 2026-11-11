@@ -101,7 +101,8 @@ def build_server(
     wanted = list(dict.fromkeys(features))
     unknown = [f for f in wanted if f not in FEATURES]
     if unknown:
-        msg = f"No feature {unknown[0]!r}; the features are {', '.join(FEATURES)}."
+        named = ", ".join(FEATURES)
+        msg = f"No feature {unknown[0]!r}; the features are {named}. Pick from those in the settings."
         raise UnknownFeatureError(msg)
     # RULE: only a switched-on feature adds tools
     guarded = _Guarded(server, simulated)

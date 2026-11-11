@@ -60,7 +60,10 @@ FRESH = 20.0
 #: The loudest the voice may set a TV, out of 100, so a misheard number is never deafening.
 LOUDEST = 50
 #: What the voice says when YouTube is not switched on.
-NO_YOUTUBE = "YouTube is not set up. Add 'youtube' to the features in the settings."
+NO_YOUTUBE = (
+    "YouTube is not set up. Add 'youtube' to features in ~/.config/tv-mcp/config.toml,"
+    " then restart the TV plugin."
+)
 #: How many videos a YouTube search reads out.
 YOUTUBE_RESULTS = 5
 
@@ -500,7 +503,9 @@ class TvService:
     async def _cast(self, caster: Casts, tv: Tv, item: MediaItem) -> dict[str, Any]:
         """Cast `item` to `tv`, from where it was stopped."""
         if not await caster.cast(tv.address or "", item, item.position or 0.0):
-            return _refused(f"I could not cast to {tv.spoken}. Is the Chromecast on?")
+            return _refused(
+                f"I could not cast to {tv.spoken}. Check that its Chromecast is on, then try again."
+            )
         where = f" from {spoken_time(item.position)}" if item.position else ""
         return {"outcome": "playing", "say": f"Playing {_spoken(item)} on {tv.spoken}{where}."}
 
@@ -546,7 +551,9 @@ class TvService:
             return wrong
         until = self._clock() + OPEN_IN_FRONT_WITHIN
         if not await cast("OpensApps", driver).open_app(tv.address or "", app_id):
-            return _refused(f"{tv.spoken.capitalize()} did not open {app}. Is it on?")
+            return _refused(
+                f"{tv.spoken.capitalize()} did not open {app}. Check that it is on, then try again."
+            )
         if await self._comes_to_front(driver, tv, app_id, until) is False:
             return {
                 "outcome": "unverified",
@@ -593,7 +600,7 @@ class TvService:
             return wrong
         sent = await cast("ChangesInput", driver).show_input(target, wanted)
         if sent is None:
-            return _refused(f"{_capital(tv.spoken)} did not answer. Is it on?")
+            return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, then try again.")
         if self.just_woken(tv):
             try:
                 sent = await asyncio.wait_for(self._against_grab(driver, target, wanted, sent), GRAB_BUDGET)
@@ -863,7 +870,8 @@ OPEN_WAIT = 15.0
 OPEN_IN_FRONT_WITHIN = 8.0
 
 NO_LIBRARY = (
-    "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key. Add them to play films."
+    "Jellyfin is not set up: ~/.config/tv-mcp/config.toml has no [jellyfin] url and api_key."
+    " Add them there, then restart the TV plugin."
 )
 
 
@@ -913,7 +921,7 @@ def _choose(title: str, found: list[MediaItem]) -> str | dict[str, Any]:
         return found[0].id
     options = "; ".join(_spoken(i) for i in found[:3])
     # RULE: a title that matches several items is refused, naming them
-    return _refused(f"{title!r} could be: {options}. Which one?")
+    return _refused(f"{title!r} could be: {options}. Say which one.")
 
 
 def _another(tv: Tv) -> str:
@@ -981,7 +989,10 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
         return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {_labelled(tv, sent.said)} now."}
     return {
         "outcome": "unverified",
-        "say": f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}.",
+        "say": (
+            f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}."
+            " Try again, or use the TV's own remote."
+        ),
     }
 
 
@@ -991,7 +1002,7 @@ def _unconfirmed(tv: Tv, sent: InputSent) -> str:
     if sent.left:
         return (
             f"I sent {sent.said} to {tv.spoken}. {sent.left} left the screen,"
-            " but this TV cannot say which input is on screen."
+            " but this TV cannot say which input is on screen. Look at the screen to be sure."
         )
     if sent.stayed:
         return (
@@ -1001,10 +1012,13 @@ def _unconfirmed(tv: Tv, sent: InputSent) -> str:
     if sent.accepted:
         device = tv.device_on(sent.said)
         named = f"{sent.said} ({device})" if device else sent.said
-        return f"{_capital(tv.spoken)} accepted the switch to {named}, but can't confirm the picture."
+        return (
+            f"{_capital(tv.spoken)} accepted the switch to {named}, but can't confirm the picture."
+            " Look at the screen to be sure."
+        )
     return (
         f"I sent {sent.said} to {tv.spoken}, but this TV cannot say which input is on screen,"
-        " so it is not confirmed."
+        " so it is not confirmed. Look at the screen to be sure."
     )
 
 
