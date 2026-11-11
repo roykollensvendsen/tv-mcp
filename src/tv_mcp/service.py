@@ -27,7 +27,7 @@ from tv_mcp.driver import (
     ShowsYouTube,
 )
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
-from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv
+from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv, input_key
 from tv_mcp.video import Video, is_video_id
 
 if TYPE_CHECKING:
@@ -301,6 +301,8 @@ class TvService:
             return  # just woken, it may not say yet; status answers with what it knows
         if shown:
             report["input"] = shown
+            if device := tv.device_on(shown):
+                report["input_device"] = device
 
     async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add whether the TV itself is on, when another device (a Chromecast) plays to it.
@@ -542,10 +544,9 @@ class TvService:
         tv = self._tv(name)
         if not isinstance(tv, Tv):
             return tv
-        wanted = re.sub(r"[^a-z0-9]", "", source.casefold())
-        if wanted not in INPUTS:
-            listed = ", ".join(INPUTS.values())
-            return _refused(f"I cannot show {source!r}. Choose one of {listed}.")
+        wanted = _named_input(tv, source)
+        if isinstance(wanted, dict):
+            return wanted
         found = self._input_driver(tv, ChangesInput)
         if found is None:
             return _refused(f"{_capital(tv.spoken)} cannot change input from here. Use the TV's own remote.")
@@ -862,6 +863,27 @@ def _known(tv: Tv | None) -> dict[str, Any]:
     return {k: v for k, v in said.items() if v is not None or k == "tv"}
 
 
+def _named_input(tv: Tv, source: str) -> str | dict[str, Any]:
+    """The key in ``INPUTS`` for `source`, an input or a device on `tv`; else a refusal."""
+    if (key := input_key(source)) in INPUTS:
+        return key
+    fits = tv.inputs_for(source)
+    # RULE: a device name that fits two inputs is refused
+    if len(fits) == 1:
+        return fits[0]
+    if fits:
+        both = " or ".join(tv.inputs[k] for k in fits)
+        return _refused(f"{source!r} could be {both} on {tv.spoken}. Say which one.")
+    listed = ", ".join([*INPUTS.values(), *tv.inputs.values()])
+    return _refused(f"I cannot show {source!r}. Choose one of {listed}.")
+
+
+def _labelled(tv: Tv, said: str) -> str:
+    """An input said aloud, with the device on it when the owner named one: "HDMI 3, the Game Box,"."""
+    device = tv.device_on(said)
+    return f"{said}, the {device}," if device else said
+
+
 def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
     """What to say once an input was sent: seen, not seen, or not knowable."""
     if sent.unplugged:
@@ -876,7 +898,7 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
             "say": f"I sent {sent.said} to {tv.spoken}; say if the picture did not change.",
         }
     if sent.shown == sent.said:
-        return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {sent.said} now."}
+        return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {_labelled(tv, sent.said)} now."}
     return {
         "outcome": "unverified",
         "say": f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}.",
