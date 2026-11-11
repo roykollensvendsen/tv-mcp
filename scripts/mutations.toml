@@ -212,3 +212,15 @@ name = "an input the Chromecast took right after a wake is sent again"
 file = "src/tv_mcp/service.py"
 find = 'if sent.shown is None or sent.shown == sent.said:'
 replace = 'if True:'
+
+[[rule]]
+name = "the sound goes to the TV itself before the device that plays through it"
+file = "src/tv_mcp/service.py"
+find = 'if isinstance\(power, HasSound\) and tv\.power_address:'
+replace = 'if False:'
+
+[[rule]]
+name = "a sound change only the Chromecast took says so"
+file = "src/tv_mcp/service.py"
+find = 'if in_front:'
+replace = 'if True:'

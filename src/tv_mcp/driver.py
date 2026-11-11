@@ -188,6 +188,15 @@ class WakesScreen(Protocol):
 
 
 @runtime_checkable
+class KnowsOnScreen(Protocol):
+    """A device in a TV, such as a Chromecast, that hears over HDMI whether the TV shows it."""
+
+    async def on_screen(self, address: str) -> bool | None:
+        """Whether the TV shows this device's input now; None when it does not know."""
+        ...
+
+
+@runtime_checkable
 class ShowsYouTube(Protocol):
     """A driver whose TVs can show YouTube."""
 

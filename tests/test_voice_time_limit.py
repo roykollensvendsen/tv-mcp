@@ -60,6 +60,12 @@ LONGEST = {
         + samsung_tizen.INPUT_SETTLE
         + samsung_tizen.TIMEOUT
     ),
+    "sound, the TV itself first, then its Chromecast when the TV does not answer": (
+        samsung_legacy.REACH_WAIT
+        + samsung_legacy.FIND_WAIT
+        + 2 * samsung_legacy.AGENT_WAIT  # the volume read, then set
+        + chromecast.CONNECT_TIMEOUT  # the Chromecast's own volume, then whether it is shown
+    ),
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (
         jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT

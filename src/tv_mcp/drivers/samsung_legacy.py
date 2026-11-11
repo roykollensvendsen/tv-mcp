@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The driver for older Samsung TVs (2011 to 2015, before Tizen): power and inputs.
+"""The driver for older Samsung TVs (2011 to 2015, before Tizen): power, inputs and sound.
 
 These TVs take remote keys over a plain TCP connection on port 55000. The
 first time a remote connects, the TV shows an "allow" question that the owner
@@ -10,7 +10,9 @@ protocol is the one samsungctl documents.
 
 While on, the TV also answers SOAP on port 7676 through Samsung's own
 MainTVAgent2 service, which lists its inputs, says which one it shows, and
-switches to one by its id. That needs no "allow" question.
+switches to one by its id. That needs no "allow" question. The same port has
+the standard UPnP RenderingControl service, which sets the TV's own volume and
+mute, whatever input it shows.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import socket
 from typing import TYPE_CHECKING, Any
 
 from tv_mcp.driver import INPUTS, InputSent, TvInfo
+from tv_mcp.drivers import RENDERING, mute_in, soap, volume_in
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -50,7 +53,7 @@ PAGE_WAIT = 0.3
 #: How long the TV gets to change input before it is read back.
 INPUT_SETTLE = 2.0
 #: Where each TV's MainTVAgent2 answers, by address, once found.
-_CONTROL: dict[str, str] = {}
+_CONTROL: dict[tuple[str, str], str] = {}
 
 
 def _input_key(source_type: str) -> str:
@@ -159,21 +162,24 @@ class SamsungLegacy:
     key = "samsung-legacy"
     ssdp_target = "urn:samsung.com:device:RemoteControlReceiver:1"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one stand-in per way of reaching the TV
         self,
         *,
         reach: Callable[[str, int], Awaitable[bool]] = _reach,
         wake: Callable[[str, str], None] | None = None,
         press: Callable[[str, str, float], Awaitable[bool]] | None = None,
         agent: Callable[[str, str, str], Awaitable[str | None]] | None = None,
+        rendering: Callable[[str, str, str], Awaitable[str | None]] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         """Check ports with `reach`, send wake packets with `wake`, press keys with `press`.
 
-        `agent` calls the TV's MainTVAgent2: address, action, arguments.
+        `agent` calls the TV's MainTVAgent2, and `rendering` its volume service:
+        address, action, arguments.
         """
         self._reach, self._wake = reach, wake or _send_wake
         self._press, self._agent, self._sleep = press or _press, agent or _agent, sleep
+        self._rendering = rendering or _rendering
 
     def recognises(self, announcement: bytes) -> bool:
         """Whether an announcement comes from an older Samsung."""
@@ -247,23 +253,54 @@ class SamsungLegacy:
         await self._sleep(INPUT_SETTLE)
         return InputSent(said=INPUTS[source], shown=await self.input_shown(tv))
 
+    async def volume(self, address: str) -> int | None:
+        """The TV's own volume, 0 to 100, whatever input it shows."""
+        return volume_in(await self._rendering(address, "GetVolume", ""))
+
+    async def muted(self, address: str) -> bool | None:
+        """Whether the TV's own sound is off."""
+        return mute_in(await self._rendering(address, "GetMute", ""))
+
+    async def set_volume(self, address: str, level: int) -> bool:
+        """Set the TV's own volume, 0 to 100."""
+        return (
+            await self._rendering(address, "SetVolume", f"<DesiredVolume>{level}</DesiredVolume>") is not None
+        )
+
+    async def set_mute(self, address: str, *, on: bool) -> bool:
+        """Mute or unmute the TV itself."""
+        return await self._rendering(address, "SetMute", f"<DesiredMute>{int(on)}</DesiredMute>") is not None
+
 
 async def _agent(address: str, action: str, arguments: str) -> str | None:  # pragma: no cover - a real TV
     """Call `action` on the TV's MainTVAgent2; its answer, or None when it gave none."""
+    return await _call(address, AGENT, action, arguments)
+
+
+async def _rendering(address: str, action: str, arguments: str) -> str | None:  # pragma: no cover - a real TV
+    """Call `action` on the TV's standard volume service, on its master channel."""
+    if not await _reach(address, MEDIA_PORT):
+        return None
+    return await _call(
+        address, RENDERING, action, f"<InstanceID>0</InstanceID><Channel>Master</Channel>{arguments}"
+    )
+
+
+async def _call(
+    address: str, service: str, action: str, arguments: str
+) -> str | None:  # pragma: no cover - a real TV
+    """Call `action` on `service` at the TV; its answer, or None when it gave none."""
     import httpx  # noqa: PLC0415 - only a real TV needs it here
 
-    body = (
-        '<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
-        ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
-        f'<u:{action} xmlns:u="{AGENT}">{arguments}</u:{action}></s:Body></s:Envelope>'
-    )
-    headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPACTION": f'"{AGENT}#{action}"'}
+    body, headers = soap(service, action, arguments)
     async with httpx.AsyncClient(timeout=AGENT_WAIT) as client:
         try:
-            control = _CONTROL.get(address) or await asyncio.wait_for(_find_agent(client, address), FIND_WAIT)
+            control = _CONTROL.get((address, service)) or await asyncio.wait_for(
+                find_service(client, address, service), FIND_WAIT
+            )
             if control is None:
                 return None
-            _CONTROL[address] = control
+            _CONTROL[address, service] = control
             response = await client.post(
                 f"http://{address}:{MEDIA_PORT}{control}", content=body, headers=headers
             )
@@ -272,8 +309,8 @@ async def _agent(address: str, action: str, arguments: str) -> str | None:  # pr
     return response.text if response.is_success else None
 
 
-async def _find_agent(client: Any, address: str) -> str | None:  # noqa: ANN401  # pragma: no cover - a real TV
-    """Where MainTVAgent2 answers: the TV lists its services on numbered pages.
+async def find_service(client: Any, address: str, service: str) -> str | None:  # noqa: ANN401
+    """Where `service` answers: the TV lists its services on numbered pages.
 
     A description page answers in a few hundredths of a second; a control page
     holds a plain request open, so each page gets only ``PAGE_WAIT``.
@@ -283,7 +320,7 @@ async def _find_agent(client: Any, address: str) -> str | None:  # noqa: ANN401 
             response = await client.get(f"http://{address}:{MEDIA_PORT}/smp_{number}_", timeout=PAGE_WAIT)
         except Exception:  # noqa: BLE001, S112 - a page that does not answer is skipped
             continue
-        if AGENT in response.text and (found := re.search(r"<controlURL>([^<]+)", response.text)):
+        if service in response.text and (found := re.search(r"<controlURL>([^<]+)", response.text)):
             return found.group(1)
     return None
 
