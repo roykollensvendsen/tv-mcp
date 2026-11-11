@@ -121,6 +121,15 @@ class InputSent:
 
 
 @runtime_checkable
+class SeesApps(Protocol):
+    """A driver that can tell whether an app is the one in front on its TV."""
+
+    async def in_front(self, address: str, app_id: str) -> bool | None:
+        """Whether `app_id` is on the screen; None when the TV cannot say."""
+        ...
+
+
+@runtime_checkable
 class ReadsArtMode(Protocol):
     """A driver that can tell whether its TV shows art, as The Frame does."""
 

@@ -260,6 +260,11 @@ class SamsungTizen:
                 return {}
         return {}
 
+    async def in_front(self, address: str, app_id: str) -> bool | None:
+        """Whether `app_id` is the app on the screen; None when the TV does not say."""
+        visible = (await self._app_state(address, app_id)).get("visible")
+        return visible if isinstance(visible, bool) else None
+
     async def playing(self, address: str) -> Playing | None:
         """The app in front, by name, and the known apps running behind it.
 
