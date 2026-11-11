@@ -11,8 +11,10 @@ The names live only in the owner's settings file, as a table per TV:
 import asyncio
 
 from tv_mcp.driver import INPUTS, InputSent, TvInfo
+from tv_mcp.server import build_server
 from tv_mcp.service import TvService
 from tv_mcp.settings import Settings, input_devices, load_settings
+from tv_mcp.simulator import simulated_service
 from tv_mcp.tools.say import tv_lines
 
 EXAMPLE = """
@@ -132,3 +134,21 @@ def test_another_program_can_read_the_devices_of_every_tv(tmp_path):
         "attic": {"HDMI 2": "Game Box Mini", "HDMI 4": "Game Box Classic"},
     }
     assert input_devices(Settings()) == {}
+
+
+def test_the_voice_reads_first_that_a_device_name_works():
+    tools = asyncio.run(build_server(simulated_service(), features=["status", "input"]).list_tools())
+    [tool] = [t for t in tools if t.name == "tv_input"]
+    opening, source = tool.description.split("\n")[:2]
+    assert opening == "Show a device or port."
+    assert source == "Source: a device name for this TV (e.g. Chromecast) or HDMI 1-4 or TV."
+
+
+def test_an_unknown_name_lists_the_names_this_tv_knows(tmp_path):
+    driver = InputTv()
+    answer = asyncio.run(_service(tmp_path, driver).show_input("Projector", "the den"))
+    assert answer["outcome"] == "refused"
+    assert answer["say"] == (
+        "The den has no 'Projector'. Say a device: Streaming Stick or Game Box; or HDMI 1 to HDMI 4, or TV."
+    )
+    assert driver.shown == []

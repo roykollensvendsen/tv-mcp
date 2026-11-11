@@ -19,8 +19,7 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     @server.tool(
         annotations=CHANGES,
         description=(
-            "Change what a TV shows.\nSource: HDMI 1 to HDMI 4, TV for the aerial,"
-            " or the name of a device on that TV."
+            "Show a device or port.\nSource: a device name for this TV (e.g. Chromecast) or HDMI 1-4 or TV."
         ),
     )
     async def tv_input(source: str, tv: str) -> dict[str, Any]:

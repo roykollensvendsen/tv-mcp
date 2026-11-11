@@ -908,8 +908,9 @@ def _named_input(tv: Tv, source: str) -> str | dict[str, Any]:
     if fits:
         both = " or ".join(tv.inputs[k] for k in fits)
         return _refused(f"{source!r} could be {both} on {tv.spoken}. Say which one.")
-    listed = ", ".join([*INPUTS.values(), *tv.inputs.values()])
-    return _refused(f"I cannot show {source!r}. Choose one of {listed}.")
+    devices = " or ".join(tv.inputs.values())
+    choices = f"a device: {devices}; or HDMI 1 to HDMI 4, or TV" if devices else "HDMI 1 to HDMI 4, or TV"
+    return _refused(f"{_capital(tv.spoken)} has no {source!r}. Say {choices}.")
 
 
 def _labelled(tv: Tv, said: str) -> str:
