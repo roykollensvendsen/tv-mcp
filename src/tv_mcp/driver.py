@@ -118,6 +118,10 @@ class InputSent:
     shown: str | None = None
     #: Nothing is plugged into that input, so it was not sent.
     unplugged: bool = False
+    #: The app that was in front before and left the screen, for a TV that cannot say its input.
+    left: str | None = None
+    #: The app that was in front before and still is: the input did not change.
+    stayed: str | None = None
 
 
 @runtime_checkable

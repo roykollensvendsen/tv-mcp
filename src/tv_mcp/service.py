@@ -941,16 +941,32 @@ def _input_answer(tv: Tv, sent: InputSent) -> dict[str, Any]:
             " Plug something in, or pick another input."
         )
     if sent.shown is None:
-        return {
-            "outcome": "done",
-            "say": f"I sent {sent.said} to {tv.spoken}; say if the picture did not change.",
-        }
+        return {"outcome": "unverified", "say": _unconfirmed(tv, sent)}
     if sent.shown == sent.said:
         return {"outcome": "done", "say": f"{_capital(tv.spoken)} shows {_labelled(tv, sent.said)} now."}
     return {
         "outcome": "unverified",
         "say": f"I asked {tv.spoken} for {sent.said}, but it still shows {sent.shown}.",
     }
+
+
+def _unconfirmed(tv: Tv, sent: InputSent) -> str:
+    """What a TV that cannot say its input did show: an app leaving the screen, or staying on it."""
+    # RULE: an input change the TV cannot confirm is never done
+    if sent.left:
+        return (
+            f"I sent {sent.said} to {tv.spoken}. {sent.left} left the screen,"
+            " but this TV cannot say which input is on screen."
+        )
+    if sent.stayed:
+        return (
+            f"I sent {sent.said} to {tv.spoken}, but {sent.stayed} is still on the screen."
+            " Close it first, or use the TV's own remote."
+        )
+    return (
+        f"I sent {sent.said} to {tv.spoken}, but this TV cannot say which input is on screen,"
+        " so it is not confirmed."
+    )
 
 
 def _shows(report: dict[str, Any], wanted: str) -> bool:

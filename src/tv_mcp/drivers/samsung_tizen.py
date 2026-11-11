@@ -83,6 +83,8 @@ TIMEOUT = 3.0
 MEDIA_KEYS = {"pause": "KEY_PAUSE", "resume": "KEY_PLAY", "stop": "KEY_STOP"}
 #: How many seconds to wait for an app to leave the screen after Home.
 HOME_TRIES = 5
+#: Seconds an input key gets to take the app in front off the screen before it is looked at.
+INPUT_SETTLE = 2.0
 #: How long the remote connection gets to send one key.
 KEY_WAIT = 10.0
 #: How each app is named aloud.
@@ -355,10 +357,42 @@ class SamsungTizen:
         return True
 
     async def show_input(self, tv: Tv, source: str) -> InputSent | None:
-        """Press the input's own key, such as KEY_HDMI1, over the paired connection."""
-        if tv.address is None or not await self._press(tv.address, tv.key, f"KEY_{source.upper()}"):
+        """Press the input's own key, such as KEY_HDMI1, then look whether the app in front left.
+
+        The TV cannot say which input it shows. What it can say is whether the
+        app that was in front is still there: on 2026-11-11 the Q68CA took
+        KEY_HDMI1 while YouTube stayed on the screen.
+        """
+        if tv.address is None:
             return None
-        return InputSent(said=INPUTS[source])
+        front = await self._front(tv.address)
+        if not await self._press(tv.address, tv.key, f"KEY_{source.upper()}"):
+            return None
+        said = INPUTS[source]
+        if front is None:
+            return InputSent(said=said)
+        await self._sleep(INPUT_SETTLE)
+        try:
+            still = await asyncio.wait_for(self.in_front(tv.address, self.apps[front]), TIMEOUT)
+        except TimeoutError:
+            return InputSent(said=said)
+        name = APP_NAMES.get(front, front)
+        if still is None:
+            return InputSent(said=said)
+        return InputSent(said=said, stayed=name) if still else InputSent(said=said, left=name)
+
+    async def _front(self, address: str) -> str | None:
+        """The known app in front, by its key in ``apps``; None when none is, or the TV is slow to say."""
+
+        async def visible(app_id: str) -> bool:
+            return (await self._app_state(address, app_id)).get("visible") is True
+
+        names = list(self.apps)
+        try:
+            shown = await asyncio.wait_for(asyncio.gather(*(visible(self.apps[n]) for n in names)), TIMEOUT)
+        except TimeoutError:
+            return None
+        return next((n for n, on in zip(names, shown, strict=True) if on), None)
 
     async def switch(self, tv: Tv, *, on: bool) -> bool:
         """Switch `tv` on or off.

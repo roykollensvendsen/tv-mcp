@@ -69,7 +69,8 @@ def test_an_input_said_aloud_is_shown_on_the_named_tv():
     driver = InputTv()
     answer = _show(_service(driver), "HDMI 2", "the living room")
     assert driver.shown == [("192.0.2.10", "hdmi2")]
-    assert answer["outcome"] == "done"
+    # 2026-11-11: sent but not read back is not confirmed, so never "done".
+    assert answer["outcome"] == "unverified"
     assert "HDMI 2" in answer["say"]
 
 
@@ -93,7 +94,7 @@ def test_a_tv_whose_own_device_cannot_change_input_is_changed_through_its_power_
     legacy.key = "samsung-legacy"
     answer = _show(_service(Cast(), legacy, tvs=(GARAGE,)), "hdmi1", "the garage")
     assert legacy.shown == [("192.0.2.21", "hdmi1")]
-    assert answer["outcome"] == "done"
+    assert answer["outcome"] == "unverified"
 
 
 def test_a_tv_that_does_not_answer_is_said_plainly():
