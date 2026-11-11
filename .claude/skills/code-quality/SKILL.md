@@ -57,12 +57,12 @@ uv run ruff check . && uv run mypy src                  # lint and type errors
 uv run pytest -q tests/test_layers.py                   # the layers
 ```
 
-The complexity, cycle and duplication counts are functions in
-`scripts/ratchet.py` (`complexity`, `cycles`, `duplication`). The `measure`
-output lists the worst function's score per module, so open the module with the
-highest number first. The layers are not a ratchet level here:
-`tests/test_layers.py` refuses a wrong import outright, so a breach turns the
-suite red rather than a number up. The time budget is the one thing in
+The complexity, cycle, layer and duplication counts are functions in
+`scripts/ratchet.py` (`complexity`, `cycles`, `layer_breaches`, `duplication`).
+The `measure` output lists the worst function's score per module, so open the
+module with the highest number first. The layer count is there for the page
+and stays at nought: `tests/test_layers.py` refuses any breach outright, so one
+turns the suite red. The time budget is the one thing in
 `quality.json`, and it changes only by hand, with the owner's yes.
 
 ## 3. Fix the worst cell, test-first
@@ -110,13 +110,14 @@ hiding branches in a closure is not a fix the page will reward; give the helper
 a name at module level. A new module may have no function above 15 at all; the
 ratchet refuses it.
 
-**An import out of its layer.** The layers are in `tests/test_layers.py`: the
-core (`CORE`) knows no brand of TV and no MCP, a driver knows the core, a tool
-knows the core and other tools but never a driver, and only `server` and `cli`
-put drivers and tools together. Move the shared code down into the core, or
-pass the thing in as an argument. Hiding the import inside a function does not
-help, because the test counts every import in the file. A new core module gets
-its name in `CORE` in the same pull request.
+**An import out of its layer.** The map of the layers is `layer()` in
+`scripts/ratchet.py`, with `CORE`, `TOP` and `ALLOWED` beside it: the core knows
+no brand of TV and no MCP, a driver knows the core, a tool knows the core and
+other tools but never a driver, and only `server` and `cli` put drivers and
+tools together. A module with no layer counts as a breach too. Move the shared
+code down into the core, or pass the thing in as an argument. Hiding the import
+inside a function does not help, because every import in the file is counted. A
+new core module gets its name in `CORE` in the same pull request.
 
 **Copied code at 3 % or more.** A block counts when six or more lines in a row
 appear more than once in `src/`, ignoring indentation. Put the block in one
