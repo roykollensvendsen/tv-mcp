@@ -21,6 +21,9 @@ path in ``TV_MCP_SETTINGS``), because it holds addresses, tokens and keys:
     power = { driver = "samsung-legacy", address = "192.0.2.11" }  # optional: switched through another device
     # ... and with on = "cec" in it, switched on by the device in it (a Chromecast) over HDMI
 
+    [tvs.living-room.inputs]       # optional: what is plugged in where, as the owner says it
+    "HDMI 1" = "Streaming Stick"   # "show the streaming stick" picks HDMI 1; status names it
+
     [features]
     enabled = ["status", "setup"]   # leave out for the default: status only
 """
@@ -31,8 +34,10 @@ import os
 import pathlib
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from tv_mcp.driver import INPUTS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -68,6 +73,8 @@ class Tv:
     model: str | None = None
     device_id: str | None = None
     device_name: str | None = None  # the name the TV gives itself
+    #: The device on each input, by the input's key in ``INPUTS`` ("hdmi3"), as the owner named it.
+    inputs: Mapping[str, str] = field(default_factory=dict, hash=False)
 
     @property
     def spoken(self) -> str:
@@ -85,6 +92,19 @@ class Tv:
         if self.location:
             said += [self.location, f"tv {self.location}", f"tv-en {self.location}"]
         return {_plain(n) for n in said if n}
+
+    def device_on(self, said: str) -> str | None:
+        """The device on the input said, such as "HDMI 3"; None when none is named."""
+        return self.inputs.get(input_key(said))
+
+    def inputs_for(self, device: str) -> list[str]:
+        """The inputs whose device answers to `device`: the whole name, or else words of it."""
+        wanted = _plain(device)
+        whole = [k for k, d in self.inputs.items() if _plain(d) == wanted]
+        if whole or not wanted:
+            return whole
+        words = set(wanted.split())
+        return [k for k, d in self.inputs.items() if words <= set(_plain(d).split())]
 
     def has_model(self, wanted: str) -> bool:
         """Whether `wanted` is the model code or a part of it, such as "Q68CA" in "TQ55Q68CAUXXC"."""
@@ -143,6 +163,25 @@ def load_settings(path: pathlib.Path) -> Settings:
     )
 
 
+def input_key(said: str) -> str:
+    """An input as it compares with the keys of ``INPUTS``: "HDMI 3" is "hdmi3"."""
+    return re.sub(r"[^a-z0-9]", "", said.casefold())
+
+
+def input_devices(settings: Settings) -> dict[str, dict[str, str]]:
+    """Every TV's named devices, by TV key and then by input said aloud ("HDMI 3").
+
+    For other programs on this machine, such as a plugin for one of the devices:
+    ``input_devices(load_settings(settings_path()))``.
+    """
+    return {tv.key: {INPUTS[k]: d for k, d in tv.inputs.items()} for tv in settings.tvs if tv.inputs}
+
+
+def _inputs(table: Mapping[str, Any]) -> dict[str, str]:
+    """The devices on the inputs, leaving out anything that is not an input this project knows."""
+    return {key: str(device) for said, device in table.items() if (key := input_key(said)) in INPUTS}
+
+
 def _key_file(settings: pathlib.Path, name: str = KEY_FILE) -> str | None:
     file = settings.with_name(name)
     key = file.read_text().strip() if file.is_file() else ""
@@ -165,6 +204,7 @@ def _tv(key: str, table: dict[str, Any]) -> Tv:
         model=table.get("model"),
         device_id=table.get("device_id"),
         device_name=table.get("device_name"),
+        inputs=_inputs(table.get("inputs") or {}),
     )
 
 
