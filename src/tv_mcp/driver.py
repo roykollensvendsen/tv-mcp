@@ -122,6 +122,8 @@ class InputSent:
     left: str | None = None
     #: The app that was in front before and still is: the input did not change.
     stayed: str | None = None
+    #: The TV said it took the switch (a home-screen tile answered "ok"), though it cannot show it did.
+    accepted: bool = False
 
 
 @runtime_checkable

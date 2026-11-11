@@ -48,7 +48,10 @@ def test_an_app_that_left_the_screen_is_said_but_not_the_input():
 def test_an_app_still_in_front_means_the_input_did_not_change():
     answer = _show(InputSent(said=INPUTS["hdmi2"], stayed="YouTube"))
     assert answer["outcome"] == "unverified"
-    assert answer["say"].startswith("I sent HDMI 2 to upstairs, but YouTube is still on the screen.")
+    assert answer["say"] == (
+        "I sent HDMI 2 to upstairs, but YouTube is still on the screen."
+        " Nothing may be connected there, or it is off. Check it, or use the TV's own remote."
+    )
 
 
 def test_an_input_change_the_tv_cannot_confirm_is_never_done():
@@ -105,5 +108,20 @@ def test_the_tizen_tv_says_when_the_app_in_front_stayed(tmp_path):
 
 
 def test_the_tizen_tv_with_no_app_in_front_cannot_confirm_anything(tmp_path):
-    sent, _ = _tizen_tv(tmp_path, front=None, leaves=False)
+    sent, pressed = _tizen_tv(tmp_path, front=None, leaves=False)
+    assert pressed == ["KEY_HDMI2"]
     assert (sent.left, sent.stayed, sent.shown) == (None, None, None)
+
+
+def test_a_switch_the_tv_accepted_is_said_as_accepted_but_not_seen():
+    named = Tv(key="upstairs", names=("upstairs",), address="192.0.2.11", inputs={"hdmi2": "Game Box"})
+    service = TvService(
+        Settings(tvs=(named,)),
+        drivers={"samsung-tizen": Tizen(InputSent(said="HDMI 2", accepted=True))},
+        listen=_no_listen,
+    )
+    answer = asyncio.run(service.show_input("Game Box", "upstairs"))
+    assert answer["outcome"] == "unverified"
+    assert (
+        answer["say"] == "Upstairs accepted the switch to HDMI 2 (Game Box), but can't confirm the picture."
+    )

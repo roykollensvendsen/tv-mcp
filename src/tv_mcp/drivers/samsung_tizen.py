@@ -10,9 +10,14 @@ which is the first two digits of the model code (``22_PONTUSM_FTV``).
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import pathlib
 import re
 import socket
+import ssl
+import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 import httpx
@@ -43,6 +48,92 @@ def _samsung_remote(address: str, token_file: pathlib.Path) -> Remote:  # pragma
         host=address, port=8002, name="tv-mcp", timeout=10, token_file=str(token_file)
     )
     return remote
+
+
+class HomeChannel(Protocol):
+    """The TV's home-screen channel ("mobilebff", port 8002): one request, one answer."""
+
+    def ask(self, request_id: str, params: dict[str, Any]) -> dict[str, Any] | None: ...  # noqa: D102
+    def close(self) -> None: ...  # noqa: D102
+
+
+#: The home-screen channel's own event name, which every request is sent under.
+HOME_EVENT = "/sec/tv/appdata/mobilebff"
+#: An input's tile on the home screen: "s/source.layer.hdmi@HDMI2/0".
+INPUT_TILE = re.compile(r"^s/source\.layer\.\w+@([A-Za-z]+\d*)(?:/\d+)?$")
+
+
+class _Home:  # pragma: no cover - needs a real TV
+    """The home-screen channel over a websocket, under the remote's own pairing and name."""
+
+    def __init__(self, address: str, token_file: pathlib.Path) -> None:
+        import websocket  # noqa: PLC0415 - comes with samsungtvws
+
+        # Only under a pairing the TV already gave: a new name or no token puts "allow?" on the screen.
+        token = token_file.read_text().strip() if token_file.is_file() else ""
+        if not token:
+            msg = "not paired"
+            raise ConnectionError(msg)
+        name = base64.b64encode(b"tv-mcp").decode()
+        url = f"wss://{address}:8002/api/v2/channels/com.samsung.tv.mobilebff?name={name}&token={token}"
+        self._ws = websocket.create_connection(
+            url, timeout=1, sslopt={"cert_reqs": ssl.CERT_NONE, "check_hostname": False}
+        )
+        self._timeout = websocket.WebSocketTimeoutException
+        if self._wait(lambda message: message.get("event") == "ms.channel.ready") is None:
+            self.close()
+            msg = "the home-screen channel did not open"
+            raise ConnectionError(msg)
+
+    def _wait(self, wanted: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
+        end = time.monotonic() + HOME_WAIT
+        while time.monotonic() < end:
+            try:
+                message: dict[str, Any] = json.loads(self._ws.recv())
+            except self._timeout:
+                continue
+            if message.get("event") == "ms.channel.unauthorized":
+                return None
+            if wanted(message):
+                return message
+        return None
+
+    def ask(self, request_id: str, params: dict[str, Any]) -> dict[str, Any] | None:
+        inner = {"version": "0.2", "id": request_id, "seqId": "1", "params": params}
+        data = json.dumps(inner)
+        self._ws.send(
+            json.dumps(
+                {"method": "ms.channel.emit", "params": {"event": HOME_EVENT, "to": "host", "data": data}}
+            )
+        )
+
+        def answers(message: dict[str, Any]) -> bool:
+            return message.get("event") == HOME_EVENT and f'"id":"{request_id}"' in str(
+                message.get("data")
+            ).replace(" ", "")
+
+        found = self._wait(answers)
+        return json.loads(found["data"]) if found else None
+
+    def close(self) -> None:
+        self._ws.close()
+
+
+def _samsung_home(
+    address: str, token_file: pathlib.Path
+) -> HomeChannel:  # pragma: no cover - needs a real TV
+    return _Home(address, token_file)
+
+
+def input_tiles(tiles: list[dict[str, Any]]) -> dict[str, tuple[str, str]]:
+    """The inputs the home screen has a tile for, by key in ``INPUTS``: the tile's id and its title."""
+    found = {}
+    for tile in tiles:
+        matched = INPUT_TILE.match(str(tile.get("appId", "")))
+        key = re.sub(r"[^a-z0-9]", "", matched.group(1).casefold()) if matched else ""
+        if key in INPUTS:
+            found[key] = (str(tile["appId"]), str(tile.get("title") or INPUTS[key]))
+    return dict(sorted(found.items()))
 
 
 class ArtChannel(Protocol):
@@ -83,6 +174,8 @@ TIMEOUT = 3.0
 MEDIA_KEYS = {"pause": "KEY_PAUSE", "resume": "KEY_PLAY", "stop": "KEY_STOP"}
 #: How many seconds to wait for an app to leave the screen after Home.
 HOME_TRIES = 5
+#: Seconds the home-screen channel gets to open, and then to answer one request.
+HOME_WAIT = 4.0
 #: Seconds an input key gets to take the app in front off the screen before it is looked at.
 INPUT_SETTLE = 2.0
 #: How long the remote connection gets to send one key.
@@ -153,11 +246,13 @@ class SamsungTizen:
         wake: Callable[[str], None] = _send_wake,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         art: Callable[[str, pathlib.Path], ArtChannel] = _samsung_art,
+        bff: Callable[[str, pathlib.Path], HomeChannel] = _samsung_home,
     ) -> None:
         """Use `client` for every request; pairing tokens are kept in `token_folder`."""
         self._client = client
         self._token_folder = token_folder or pathlib.Path("~/.config/tv-mcp").expanduser()
         self._remote, self._wake, self._sleep, self._art = remote, wake, sleep, art
+        self._home = bff
         # The TV's port 8002 answers with a certificate it signed itself.
         self._tls = tls_client or httpx.AsyncClient(verify=False)  # noqa: S501 - the TV's own certificate
 
@@ -356,30 +451,72 @@ class SamsungTizen:
             return False
         return True
 
-    async def show_input(self, tv: Tv, source: str) -> InputSent | None:
-        """Press the input's own key, such as KEY_HDMI1, then look whether the app in front left.
+    async def _tiles(self, tv: Tv) -> dict[str, tuple[str, str]] | None:
+        """The input tiles on the TV's home screen; None when it has no such channel or is slow."""
+        listing = await self._at_home(tv, "get.apptiles", {})
+        tiles = (listing or {}).get("response")
+        return input_tiles(tiles) if isinstance(tiles, list) else None
 
-        The TV cannot say which input it shows. What it can say is whether the
-        app that was in front is still there: on 2026-11-11 the Q68CA took
-        KEY_HDMI1 while YouTube stayed on the screen.
+    async def _at_home(self, tv: Tv, request_id: str, params: dict[str, Any]) -> dict[str, Any] | None:
+        """Ask the home-screen channel one thing; None when it does not open or answer in time."""
+        token_file = self._token_folder / f"{tv.key}-token"
+
+        def ask() -> dict[str, Any] | None:
+            home = self._home(tv.address or "", token_file)
+            try:
+                return home.ask(request_id, params)
+            finally:
+                home.close()
+
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(ask), 2 * HOME_WAIT)
+        except Exception:  # noqa: BLE001 - a TV without the channel is changed by its keys instead
+            return None
+
+    async def inputs_plugged(self, tv: Tv) -> dict[str, str | None] | None:
+        """What the home screen names on each input; only read. None when it cannot say."""
+        tiles = await self._tiles(tv)
+        return {key: title for key, (_, title) in tiles.items()} if tiles else None
+
+    async def show_input(self, tv: Tv, source: str) -> InputSent | None:
+        """Show `source` by its home-screen tile, else by its remote key, then look whether the app left.
+
+        2023 sets ignore the input keys (on 2026-11-11 the Q68CA kept YouTube
+        on the screen after KEY_HDMI2), but launch the input's tile. The TV
+        cannot say which input it shows; it can say whether the app in front
+        is still there.
         """
         if tv.address is None:
             return None
         front = await self._front(tv.address)
-        if not await self._press(tv.address, tv.key, f"KEY_{source.upper()}"):
-            return None
         said = INPUTS[source]
+        tiles = await self._tiles(tv)
+        # RULE: an input is changed by its tile when the TV lists one
+        accepted = False
+        if tiles and source in tiles:
+            answer = await self._at_home(tv, "launch.app", {"requestId": tiles[source][0]})
+            if answer is None:
+                return None
+            accepted = (answer.get("response") or {}).get("status") == "ok"
+        elif tiles:
+            return InputSent(said=said, unplugged=True)
+        elif not await self._press(tv.address, tv.key, f"KEY_{source.upper()}"):
+            return None
+        return await self._read_back(tv, InputSent(said=said, accepted=accepted), front)
+
+    async def _read_back(self, tv: Tv, sent: InputSent, front: str | None) -> InputSent:
+        """What the TV can confirm after an input was sent: whether the app in front left."""
         if front is None:
-            return InputSent(said=said)
+            return sent
         await self._sleep(INPUT_SETTLE)
         try:
-            still = await asyncio.wait_for(self.in_front(tv.address, self.apps[front]), TIMEOUT)
+            still = await asyncio.wait_for(self.in_front(tv.address or "", self.apps[front]), TIMEOUT)
         except TimeoutError:
-            return InputSent(said=said)
+            still = None
         name = APP_NAMES.get(front, front)
         if still is None:
-            return InputSent(said=said)
-        return InputSent(said=said, stayed=name) if still else InputSent(said=said, left=name)
+            return sent
+        return replace(sent, stayed=name) if still else replace(sent, left=name)
 
     async def _front(self, address: str) -> str | None:
         """The known app in front, by its key in ``apps``; None when none is, or the TV is slow to say."""
