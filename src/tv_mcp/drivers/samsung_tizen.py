@@ -55,6 +55,10 @@ class ArtChannel(Protocol):
 def _samsung_art(address: str, token_file: pathlib.Path) -> ArtChannel:  # pragma: no cover - needs a real TV
     from samsungtvws.art import SamsungTVArt  # noqa: PLC0415 - only loaded when art mode is read
 
+    # The art channel takes the remote's own pairing under the same name, "tv-mcp": on
+    # The Frame (Tizen 6.5) it let us in within 0.1 s with no "allow?" on screen, the
+    # owner watching, and left the token file as it was (checked live 2026-11-11).
+    # A new name, or a lost token, would put a prompt on the screen instead.
     channel: ArtChannel = SamsungTVArt(  # type: ignore[no-untyped-call]
         host=address, port=8002, name="tv-mcp", timeout=TIMEOUT, token_file=str(token_file)
     )
