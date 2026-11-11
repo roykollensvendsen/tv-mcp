@@ -182,3 +182,15 @@ name = "a name set by hand wins over a detected one"
 file = "src/tv_mcp/service.py"
 find = 'entries = found \| by_hand'
 replace = 'entries = by_hand | found'
+
+[[rule]]
+name = "an import a layer may not use is a breach"
+file = "scripts/ratchet.py"
+find = 'if layer\(inside\) not in ALLOWED\[mine\]:'
+replace = 'if False:'
+
+[[rule]]
+name = "a module with no layer is a breach"
+file = "scripts/ratchet.py"
+find = 'if layer\(module\) == "unassigned":'
+replace = 'if False:'

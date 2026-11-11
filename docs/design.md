@@ -272,7 +272,8 @@ run on into the next.
 ## Layers, drivers and features
 
 The project is meant to take support for other people's TVs, so it is built
-in layers, and `tests/test_layers.py` refuses an import that crosses them:
+in layers, and `tests/test_layers.py` refuses an import that crosses them
+(the map is `layer()` in `scripts/ratchet.py`):
 
 | Layer | Holds | May use |
 |---|---|---|
