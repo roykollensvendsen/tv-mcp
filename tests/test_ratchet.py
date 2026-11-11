@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The quality ratchet: a change may make the code better or leave it as it is, never worse without a reason.
 
-Ported from claude-voice's own ratchet tests. What tv-mcp has no use for, the
-layers among the modules, is left out: `tests/test_layers.py` already refuses a
-layer breach outright, so there is no level to keep.
+Ported from claude-voice's own ratchet tests. The layers among the modules are
+counted here too, so that the code-health page can show them, and
+`tests/test_layers.py` refuses a breach outright.
 """
 
 import importlib.util
@@ -33,6 +33,7 @@ BASE = {
     "lint_errors": 0,
     "type_errors": 0,
     "cycles": 0,
+    "layer_violations": 0,
     "duplication": 2.0,
     "complexity": {"pkg/a.py": 10, "pkg/b.py": 5},
     "test_seconds": 40.0,
@@ -61,6 +62,7 @@ def problems(base, now, exceptions=()):
         ({"lint_errors": 1}, "lint_errors"),
         ({"type_errors": 2}, "type_errors"),
         ({"cycles": 1}, "cycles"),
+        ({"layer_violations": 1}, "layer_violations"),
         ({"duplication": 3.0}, "duplication"),
         ({"complexity": {"pkg/a.py": 11, "pkg/b.py": 5}}, "complexity"),
     ],
@@ -212,6 +214,39 @@ def test_a_cycle_through_a_subpackage_by_absolute_imports_is_counted(tmp_path):
         },
     )
     assert ratchet.cycles(pkg) == 1
+
+
+def _layered(tmp_path, files):
+    """A package named like this one, so its imports read as they do in src/."""
+    pkg = tmp_path / "tv_mcp"
+    _package(pkg, {"__init__.py": "", "drivers/__init__.py": "", "tools/__init__.py": "", **files})
+    return pkg
+
+
+def test_an_import_a_layer_may_not_use_is_a_breach(tmp_path):
+    allowed = {
+        "driver.py": "import json\nfrom tv_mcp.settings import Tv\n",
+        "settings.py": "",
+        "drivers/samsung.py": "from tv_mcp.driver import Driver\n",
+        "tools/say.py": "from tv_mcp.service import x\nfrom mcp import types\n",
+        "service.py": "",
+        "cli.py": "from tv_mcp.drivers.samsung import S\nfrom tv_mcp.tools import say\n",
+    }
+    assert ratchet.layer_breaches(_layered(tmp_path, allowed)) == []
+    wrong = {
+        "service.py": "from tv_mcp.drivers.samsung import S\n",
+        "drivers/samsung.py": "import mcp.types\n",
+        "tools/say.py": "def later():\n    from ..drivers import samsung\n",
+    }
+    assert ratchet.layer_breaches(_layered(tmp_path / "b", {**allowed, **wrong})) == [
+        "drivers.samsung (drivers) imports mcp.types",
+        "service (core) imports tv_mcp.drivers.samsung (drivers)",
+        "tools.say (tools) imports tv_mcp.drivers.samsung (drivers)",
+    ]
+
+
+def test_a_module_with_no_layer_is_a_breach(tmp_path):
+    assert ratchet.layer_breaches(_layered(tmp_path, {"stray.py": ""})) == ["stray has no layer"]
 
 
 def test_duplicated_code_is_the_share_of_lines_in_blocks_that_appear_twice(tmp_path):

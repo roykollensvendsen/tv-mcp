@@ -74,8 +74,9 @@ check against the main before it.
   doubles the job's time.
 - **Worse:** a pull request whose check ran before main moved on is not checked
   again until it changes.
-- **Worse:** the layers among the modules are not a level here, unlike in
-  claude-voice, because `tests/test_layers.py` already refuses a breach outright.
+- **Neutral:** the layers among the modules are a level here too, as in
+  claude-voice, so that the code-health page shows them (added 2026-11-11). It
+  stays at nought, because `tests/test_layers.py` refuses a breach outright.
 
 ## Related
 

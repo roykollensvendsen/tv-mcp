@@ -3,9 +3,10 @@
 """The quality ratchet: the code may get better or stay as it is, never worse unless a change says why.
 
 It measures test coverage, the share of rules whose own test notices them switched off, the
-number of tests, lint and type errors, import cycles among the modules, copied code, and the
-most tangled function in each module, and compares them with the levels main reached. A
-change that makes one worse fails, unless its pull request has a line of its own
+number of tests, lint and type errors, import cycles among the modules, imports that cross
+the layers, copied code, and the most tangled function in each module, and compares them
+with the levels main reached. A change that makes one worse fails, unless its pull request
+has a line of its own
 
     Ratchet-Exception: coverage - the reason
 
@@ -49,12 +50,27 @@ SOURCE = ROOT / "src"
 PACKAGE = SOURCE / "tv_mcp"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
 HIGHER = ("coverage", "mutation", "tests")
-LOWER = ("lint_errors", "type_errors", "cycles", "duplication")
+LOWER = ("lint_errors", "type_errors", "cycles", "layer_violations", "duplication")
 DEFAULT_BUDGET = {"seconds": 60, "tolerance": 0.25}
 NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
 EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
 TALLY = re.compile(r"(\d+)/(\d+) rules turned off")
+#: The layers, lowest first. The core knows no brand of TV and no MCP; a driver knows one brand
+#: and the core; a tool knows the core and MCP, never a driver; only the top puts them together.
+CORE = {
+    "settings", "driver", "media", "video", "service", "power",
+    "conformance", "discovery", "simulator", "__init__", "_version", "drivers",
+}  # fmt: skip
+TOP = {"server", "cli"}
+#: Which layers each layer may import from this package, and the outside packages it never may.
+ALLOWED = {
+    "core": {"core"},
+    "drivers": {"core"},
+    "tools": {"core", "tools"},
+    "top": {"core", "tools", "drivers", "top"},
+}
+FORBIDDEN_OUTSIDE = {"core": {"mcp"}, "drivers": {"mcp"}}
 
 
 # -- measuring ---------------------------------------------------------------------------
@@ -188,6 +204,65 @@ def cycles(package_dir: Path) -> int:
     return groups
 
 
+def layer(module: str) -> str:
+    """The layer of a module, by its dotted name inside the package; "unassigned" when it has none."""
+    parts = module.split(".")
+    if parts[0] == "tools" or (parts[0] == "drivers" and len(parts) > 1):
+        return parts[0]
+    if parts[0] in TOP:
+        return "top"
+    return "core" if module in CORE else "unassigned"
+
+
+def _named(path: Path, package_dir: Path) -> set[str]:
+    """Every name `path` imports, anywhere in it, relative imports made absolute.
+
+    Imports made only for type checking or inside a function count too: a contributor's driver
+    must be swappable without touching anything else, whenever the import would run.
+    """
+    here = path.relative_to(package_dir.parent).with_suffix("").parts[:-1]
+    found = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:  # `from .. import x` inside tools/ is tv_mcp.x
+                base = ".".join([*here[: len(here) - node.level + 1], *filter(None, base.split("."))])
+            found |= {f"{base}.{alias.name}" for alias in node.names} | {base}
+    return found
+
+
+def _breaches(module: str, path: Path, package_dir: Path, names: set[str]) -> list[str]:
+    """What `module` imports that its layer may not use."""
+    mine, package = layer(module), package_dir.name
+    found = []
+    for name in sorted(_named(path, package_dir)):
+        inside = name.removeprefix(package + ".")
+        if name.startswith(package + ".") and inside in names:
+            # RULE: an import a layer may not use is a breach
+            if layer(inside) not in ALLOWED[mine]:
+                found.append(f"{module} ({mine}) imports {name} ({layer(inside)})")
+        elif name.split(".")[0] in FORBIDDEN_OUTSIDE.get(mine, set()):
+            found.append(f"{module} ({mine}) imports {name}")
+    return found
+
+
+def layer_breaches(package_dir: Path) -> list[str]:
+    """Every import that crosses the layers, and every module that has no layer."""
+    names = {".".join(p.relative_to(package_dir).with_suffix("").parts) for p in package_dir.rglob("*.py")}
+    names |= {n.removesuffix(".__init__") for n in names}
+    found = []
+    for path in sorted(package_dir.rglob("*.py")):
+        module = ".".join(path.relative_to(package_dir).with_suffix("").parts).removesuffix(".__init__")
+        # RULE: a module with no layer is a breach
+        if layer(module) == "unassigned":
+            found.append(f"{module} has no layer")
+            continue
+        found += _breaches(module, path, package_dir, names)
+    return sorted(found)
+
+
 def duplication(folder: Path) -> float:
     """The share of non-blank source lines, in percent, in a copied block.
 
@@ -252,6 +327,7 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
         "lint_errors": len(json.loads(lint.stdout or "[]")),
         "type_errors": int(type_errors[1]) if type_errors else 0,
         "cycles": cycles(PACKAGE),
+        "layer_violations": len(layer_breaches(PACKAGE)),
         "duplication": duplication(SOURCE),
         "complexity": complexity(SOURCE),
         "test_seconds": seconds,
