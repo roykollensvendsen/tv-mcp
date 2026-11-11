@@ -677,14 +677,28 @@ class TvService:
         capped = f", at most {LOUDEST}" if wanted > LOUDEST else ""
         return {"outcome": "done", "say": f"Volume {target} on {tv.spoken}{capped}.", "volume": target}
 
-    async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:  # noqa: PLR0911 - one refusal per reason
+    async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
         """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""
         tv = self._target(name)
         if not isinstance(tv, Tv):
             return tv
         if wrong := await self._itself(tv):
             return wrong
-        assert self.library is not None  # noqa: S101 - _target checked it
+        watching = await self._what_plays(tv, seconds, relative=relative)
+        if isinstance(watching, dict):
+            return watching
+        target = (watching.position or 0.0) + seconds if relative else seconds
+        target = max(0.0, min(target, watching.runtime or target))
+        if refused := await self._jump(tv, target):
+            return refused
+        self._moved[tv.key] = (target, self._clock())
+        return {
+            "outcome": "done",
+            "say": f"Jumped to {spoken_time(target)} in {watching.now_playing} on {tv.spoken}.",
+        }
+
+    async def _what_plays(self, tv: Tv, seconds: float, *, relative: bool) -> Session | dict[str, Any]:
+        """The film a jump on `tv` moves, or the answer: another app took the jump, or nothing plays."""
         driver = self.drivers.get(tv.driver)
         if isinstance(driver, HasPlayer):
             watching = await self._watching(tv, again=0)
@@ -697,22 +711,21 @@ class TvService:
             watching = await self._watching(tv)
         if watching is None:
             return _refused(f"Nothing is playing on {tv.spoken}. Start something first.")
-        target = (watching.position or 0.0) + seconds if relative else seconds
-        target = max(0.0, min(target, watching.runtime or target))
+        return watching
+
+    async def _jump(self, tv: Tv, target: float) -> dict[str, Any] | None:
+        """Move the film on `tv` to `target`, by its Chromecast or by Jellyfin; a refusal when it cannot."""
+        assert self.library is not None  # noqa: S101 - _target checked it
         caster = self._caster(tv)
         if caster is not None:
             if not await caster.cast_seek(tv.address or "", target):
                 return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
-        else:
-            session = await self._session(tv)
-            if session is None:
-                return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
-            await self.library.seek(session.id, target)
-        self._moved[tv.key] = (target, self._clock())
-        return {
-            "outcome": "done",
-            "say": f"Jumped to {spoken_time(target)} in {watching.now_playing} on {tv.spoken}.",
-        }
+            return None
+        session = await self._session(tv)
+        if session is None:
+            return _refused(f"Jellyfin is not open on {tv.spoken}. Open it there first.")
+        await self.library.seek(session.id, target)
+        return None
 
     async def play(self, title: str, name: str, *, from_start: bool = False) -> dict[str, Any]:
         """Start `title` on the TV called `name`, where it was stopped unless `from_start`."""
