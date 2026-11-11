@@ -176,3 +176,9 @@ name = "a device name that fits two inputs is refused"
 file = "src/tv_mcp/service.py"
 find = 'if len\(fits\) == 1:'
 replace = 'if fits:'
+
+[[rule]]
+name = "a name set by hand wins over a detected one"
+file = "src/tv_mcp/service.py"
+find = 'entries = found \| by_hand'
+replace = 'entries = by_hand | found'

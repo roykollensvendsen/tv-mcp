@@ -70,6 +70,19 @@ def parse_sources(answer: str) -> dict[str, tuple[str, str]]:
     return found
 
 
+def parse_devices(answer: str) -> dict[str, str | None]:
+    """The inputs with something plugged in, leaving out the aerial, with the name each device gave."""
+    found: dict[str, str | None] = {}
+    for block in re.findall(r"<Source>(.*?)</Source>", html.unescape(answer), re.DOTALL):
+        kind, plugged, named = (
+            re.search(rf"<{tag}>([^<]*)", block) for tag in ("SourceType", "Connected", "DeviceName")
+        )
+        key = _input_key(kind.group(1)) if kind else ""
+        if plugged and plugged.group(1) == "Yes" and key in INPUTS and key != "tv":
+            found[key] = (named.group(1).strip() or None) if named else None
+    return found
+
+
 def parse_current(answer: str) -> str | None:
     """tv-mcp's name for the input the TV says it shows; None when it would not say."""
     shown = re.search(r"<CurrentExternalSource>([^<]*)", answer)
@@ -195,6 +208,13 @@ class SamsungLegacy:
         answer = await self._agent(tv.address, "GetCurrentExternalSource", "")
         shown = parse_current(answer) if answer else None
         return INPUTS.get(shown, shown) if shown else None
+
+    async def inputs_plugged(self, tv: Tv) -> dict[str, str | None] | None:
+        """The inputs with something plugged in, from the TV's own list; only read."""
+        if tv.address is None:
+            return None
+        listing = await self._agent(tv.address, "GetSourceList", "")
+        return parse_devices(listing) if listing else None
 
     async def show_input(self, tv: Tv, source: str) -> InputSent | None:
         """Pick the input by its id, and read back what the TV shows.
