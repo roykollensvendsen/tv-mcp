@@ -46,7 +46,12 @@ LONGEST = {
         + 3 * samsung_legacy.AGENT_WAIT
         + samsung_legacy.INPUT_SETTLE
     ),
-    "change input, by the paired remote": 2 * samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT,
+    "change input, by the paired remote, then looking whether the app left": (
+        2 * samsung_tizen.TIMEOUT  # whether its screen is on, and which app is in front
+        + samsung_tizen.KEY_WAIT
+        + samsung_tizen.INPUT_SETTLE
+        + samsung_tizen.TIMEOUT
+    ),
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (
         jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT

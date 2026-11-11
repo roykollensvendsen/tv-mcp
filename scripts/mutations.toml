@@ -194,3 +194,9 @@ name = "a module with no layer is a breach"
 file = "scripts/ratchet.py"
 find = 'if layer\(module\) == "unassigned":'
 replace = 'if False:'
+
+[[rule]]
+name = "an input change the TV cannot confirm is never done"
+file = "src/tv_mcp/service.py"
+find = 'return \{"outcome": "unverified", "say": _unconfirmed\(tv, sent\)\}'
+replace = 'return {"outcome": "done", "say": _unconfirmed(tv, sent)}'
