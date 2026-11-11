@@ -45,6 +45,7 @@ LONGEST = {
         + samsung_legacy.FIND_WAIT
         + 3 * samsung_legacy.AGENT_WAIT
         + samsung_legacy.INPUT_SETTLE
+        + service.GRAB_BUDGET  # right after a wake through the Chromecast: look again, send again
     ),
     "change input, by the paired remote, then looking whether the app left": (
         2 * samsung_tizen.TIMEOUT  # whether its screen is on, and which app is in front

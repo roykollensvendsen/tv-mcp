@@ -80,6 +80,13 @@ SUBTITLES_KEPT = 4
 WAIT_WITHIN = 10.0
 #: How long status waits to hear which input a TV shows, before saying what it knows.
 INPUT_READ_WAIT = 3.0
+#: Seconds after a wake through the Chromecast in which it may still take the screen; the
+#: garage TV takes about a minute to come on (2026-11-10), and the Chromecast takes it after.
+GRAB_WITHIN = 180.0
+#: Seconds to wait before looking again whether the Chromecast took the screen back.
+GRAB_LOOK = 2.0
+#: Seconds the second look and the second send get together, so the voice still has its answer.
+GRAB_BUDGET = 8.0
 #: The states in which a TV's own screen is off.
 SCREEN_OFF = {"off", "standby", "standby or art mode", "showing art", UNREACHABLE}
 
@@ -112,6 +119,17 @@ class TvService:
         self._subtitles: dict[str, asyncio.Task[list[Cue] | None]] = {}
         #: Work left running after the voice was answered, kept until it ends.
         self._running: set[asyncio.Task[Any]] = set()
+        #: When each TV was last woken through the Chromecast in it, which may then take the screen.
+        self._woken: dict[str, float] = {}
+
+    def woken_by_hdmi(self, tv: Tv) -> None:
+        """Note that `tv` was just woken through the device in it."""
+        self._woken[tv.key] = self._clock()
+
+    def just_woken(self, tv: Tv) -> bool:
+        """Whether `tv` was woken through the device in it so lately that it may still take the screen."""
+        woken = self._woken.get(tv.key)
+        return woken is not None and self._clock() - woken <= GRAB_WITHIN
 
     async def _watching(self, tv: Tv, again: int = LOOK_AGAIN) -> Session | None:
         """What plays on `tv` in Jellyfin, asked `again` more times when it seems gone."""
@@ -576,7 +594,24 @@ class TvService:
         sent = await cast("ChangesInput", driver).show_input(target, wanted)
         if sent is None:
             return _refused(f"{_capital(tv.spoken)} did not answer. Is it on?")
+        if self.just_woken(tv):
+            try:
+                sent = await asyncio.wait_for(self._against_grab(driver, target, wanted, sent), GRAB_BUDGET)
+            except TimeoutError:
+                sent = replace(sent, shown=None)
         return _input_answer(tv, sent)
+
+    async def _against_grab(self, driver: Any, target: Tv, wanted: str, sent: InputSent) -> InputSent:  # noqa: ANN401
+        """Look again, and send once more if the Chromecast took the screen as the TV woke."""
+        if sent.unplugged or sent.shown is None:
+            return sent
+        if sent.shown == sent.said and isinstance(driver, ReadsInput):
+            await self._sleep(GRAB_LOOK)
+            sent = replace(sent, shown=await driver.input_shown(target))
+        # RULE: an input the Chromecast took right after a wake is sent again
+        if sent.shown is None or sent.shown == sent.said:
+            return sent
+        return await cast("ChangesInput", driver).show_input(target, wanted) or sent
 
     @staticmethod
     async def _screen_off(tv: Tv, driver: Any, target: Tv) -> dict[str, Any] | None:  # noqa: ANN401

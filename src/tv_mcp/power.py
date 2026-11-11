@@ -96,7 +96,10 @@ class PowerService:
         """On through the device in the TV when it is set to wake by HDMI; otherwise by its switcher."""
         waker = self._waker(tv)
         if on and waker is not None and tv.address:
-            return await waker.wake_screen(tv.address)
+            woken = await waker.wake_screen(tv.address)
+            if woken:
+                self._service.woken_by_hdmi(tv)
+            return woken
         switcher = self._switcher(tv)
         target = replace(tv, address=tv.power_address) if tv.power_driver else tv
         return switcher is not None and await switcher.switch(target, on=on)
@@ -169,12 +172,17 @@ class PowerService:
             return _refused(
                 f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
             )
+        # Starting an app on the Chromecast asks the TV over HDMI to show the Chromecast.
+        through_cast = pending.on and self._waker(pending.tv) is not None
         if await self._seen(pending.tv, wanted, until=until):
-            return {"outcome": "done", "say": f"{pending.tv.spoken.capitalize()} is {wanted} now."}
+            return {"outcome": "done", "say": _now(pending.tv, wanted, through_cast=through_cast)}
         wait = f" Ask me to wait for it to be {wanted}."
-        if pending.on and self._waker(pending.tv) is not None:
+        if through_cast:
             # Woken over HDMI, a TV may take a minute to come on and may never say so in time.
-            say = f"I asked {pending.tv.spoken} to switch on; it can take a minute before it is on."
+            say = (
+                f"I asked {pending.tv.spoken} to switch on through its Chromecast; it can take a minute"
+                " before it is on, and the Chromecast may take the screen."
+            )
         else:
             say = f"I sent it, but {pending.tv.spoken} is not {wanted} yet."
         return {"outcome": "unverified", "say": say + wait}
@@ -195,3 +203,13 @@ class PowerService:
                 return False
             await self._sleep(1.0)
         return False
+
+
+def _now(tv: Tv, wanted: str, *, through_cast: bool) -> str:
+    """What to say once `tv` is seen `wanted`; woken through its Chromecast, that may hold the screen."""
+    if through_cast:
+        return (
+            f"{tv.spoken.capitalize()} is on now; its Chromecast may have taken the screen."
+            " Ask me for another input if you want one."
+        )
+    return f"{tv.spoken.capitalize()} is {wanted} now."
