@@ -52,6 +52,13 @@ LONGEST = {
         + samsung_tizen.INPUT_SETTLE
         + samsung_tizen.TIMEOUT
     ),
+    "change input, by its home-screen tile, then looking whether the app left": (
+        2 * samsung_tizen.TIMEOUT  # whether its screen is on, and which app is in front
+        + 2 * samsung_tizen.HOME_WAIT  # the tiles: the channel opens, then answers
+        + 2 * samsung_tizen.HOME_WAIT  # launching the tile
+        + samsung_tizen.INPUT_SETTLE
+        + samsung_tizen.TIMEOUT
+    ),
     "play a YouTube video, opening YouTube first": samsung_tizen.TIMEOUT + service.YOUTUBE_WAIT,
     "the scene, from subtitles inside the film": (
         jellyfin.TIMEOUT + service.SUBTITLE_WAIT + 2 * jellyfin.TIMEOUT

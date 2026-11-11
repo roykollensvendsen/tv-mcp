@@ -961,8 +961,12 @@ def _unconfirmed(tv: Tv, sent: InputSent) -> str:
     if sent.stayed:
         return (
             f"I sent {sent.said} to {tv.spoken}, but {sent.stayed} is still on the screen."
-            " Close it first, or use the TV's own remote."
+            " Nothing may be connected there, or it is off. Check it, or use the TV's own remote."
         )
+    if sent.accepted:
+        device = tv.device_on(sent.said)
+        named = f"{sent.said} ({device})" if device else sent.said
+        return f"{_capital(tv.spoken)} accepted the switch to {named}, but can't confirm the picture."
     return (
         f"I sent {sent.said} to {tv.spoken}, but this TV cannot say which input is on screen,"
         " so it is not confirmed."
