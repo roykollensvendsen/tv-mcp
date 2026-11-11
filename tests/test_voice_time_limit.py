@@ -28,6 +28,7 @@ LONGEST = {
     "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT + power.CONFIRM_WITHIN,
     "power off, a TV before Tizen": 2 * samsung_legacy.REACH_WAIT + power.CONFIRM_WITHIN,
     "play, opening Jellyfin first": samsung_tizen.TIMEOUT + service.OPEN_WAIT + jellyfin.TIMEOUT,
+    "open an app, watched until it is in front": samsung_tizen.TIMEOUT + service.OPEN_IN_FRONT_WITHIN,
     "close an app, by the home key when refused": (
         samsung_tizen.TIMEOUT + samsung_tizen.KEY_WAIT + samsung_tizen.HOME_TRIES
     ),

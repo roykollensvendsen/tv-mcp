@@ -164,3 +164,9 @@ name = "art mode is only read, never set"
 file = "src/tv_mcp/drivers/samsung_tizen.py"
 find = '                mode = channel\.get_artmode\(\)'
 replace = 'mode = channel.set_artmode("on") or channel.get_artmode()'
+
+[[rule]]
+name = "an app is said open only once it is in front"
+file = "src/tv_mcp/service.py"
+find = 'if not isinstance\(driver, SeesApps\):'
+replace = 'if True:'

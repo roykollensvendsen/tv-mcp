@@ -23,6 +23,7 @@ from tv_mcp.driver import (
     HasSound,
     ReadsArtMode,
     ReadsInput,
+    SeesApps,
     ShowsYouTube,
 )
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
@@ -503,9 +504,38 @@ class TvService:
         tv, driver, app_id = found
         if wrong := await self._itself(tv):
             return wrong
+        until = self._clock() + OPEN_IN_FRONT_WITHIN
         if not await cast("OpensApps", driver).open_app(tv.address or "", app_id):
             return _refused(f"{tv.spoken.capitalize()} did not open {app}. Is it on?")
+        if await self._comes_to_front(driver, tv, app_id, until) is False:
+            return {
+                "outcome": "unverified",
+                "say": f"I asked {tv.spoken} to open {app}, but it is not in front yet."
+                " Ask me in a moment what is on it.",
+            }
         return {"outcome": "done", "say": f"Opened {app} on {tv.spoken}."}
+
+    async def _comes_to_front(self, driver: object, tv: Tv, app_id: str, until: float) -> bool | None:
+        """Whether `app_id` came to the front on `tv` by `until`, looked at once a second.
+
+        None when the TV cannot say which app is in front.
+        """
+        # RULE: an app is said open only once it is in front
+        if not isinstance(driver, SeesApps):
+            return None
+        for _ in range(math.ceil(OPEN_IN_FRONT_WITHIN)):
+            if (left := until - self._clock()) <= 0:
+                break
+            try:
+                front = await asyncio.wait_for(driver.in_front(tv.address or "", app_id), left)
+            except TimeoutError:
+                break
+            if front is not False:
+                return front
+            if until - self._clock() <= 1:
+                break
+            await self._sleep(1.0)
+        return False
 
     async def show_input(self, source: str, name: str) -> dict[str, Any]:
         """Show the input `source`, such as "HDMI 1", on the TV called `name`."""
@@ -760,6 +790,8 @@ class TvService:
 
 #: How long play waits, in seconds, for Jellyfin it opened to connect.
 OPEN_WAIT = 15.0
+#: Seconds an opened app is watched for until it is in front, counted from asking the TV.
+OPEN_IN_FRONT_WITHIN = 8.0
 
 NO_LIBRARY = (
     "Jellyfin is not set up: the settings file has no [jellyfin] url and api_key. Add them to play films."
