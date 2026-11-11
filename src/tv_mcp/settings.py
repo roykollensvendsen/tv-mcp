@@ -222,7 +222,7 @@ def find_tv(settings: Settings, name: str) -> Tv:
     matches = [tv for tv in settings.tvs if wanted in tv.answers_to() or tv.has_model(wanted)]
     if not matches:
         known = ", ".join(tv.spoken for tv in settings.tvs) or "none set up yet"
-        msg = f"No TV is called {name!r}. The TVs are: {known}."
+        msg = f"No TV is called {name!r}. The TVs are: {known}. Say one of those."
         raise UnknownTvError(msg)
     # RULE: a name that matches two TVs is refused
     if len(matches) > 1:
