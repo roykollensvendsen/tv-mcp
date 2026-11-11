@@ -21,3 +21,6 @@ scripts/.mutate-recovery.json
 jellyfin-key
 # A TV pairing token belongs in ~/.config/tv-mcp, never here.
 *-token
+
+# Claude Code settings on this machine, and the backups an install leaves beside them.
+.claude/settings.local.json*
