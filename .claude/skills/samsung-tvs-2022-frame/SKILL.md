@@ -54,7 +54,14 @@ about this family, each with the date it was seen.
   network stays awake, so waking from Art Mode is a key, not a Wake-on-LAN
   packet.
 - **Standby or art:** `PowerState standby` on a Frame can mean Art Mode is on;
-  tv-mcp reports it as "standby or art mode".
+  tv-mcp reports it as "standby or art mode", and then reads the art channel to
+  say "showing art" or "standby".
+- **Art channel, no prompt:** the art channel (`com.samsung.art-app` on port
+  8002) accepts the remote's pairing token under the same client name,
+  `tv-mcp`. On 2026-11-11 it let tv-mcp in after 0.1 s with no question on the
+  screen, the owner watching, and did not rewrite the token file. Keep the name
+  and the token file the same, or the TV asks again. In deep standby (black
+  screen) the TV is off the network, so there is nothing to read.
 - **In the browser** Jellyfin works but is clumsy; the app is the way.
 - **Sound:** the film's Dolby Digital 5.1 needs no transcoding in the app; the
   TV's browser would need audio transcoding.
