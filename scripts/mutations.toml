@@ -206,3 +206,9 @@ name = "an input is changed by its tile when the TV lists one"
 file = "src/tv_mcp/drivers/samsung_tizen.py"
 find = 'if tiles and source in tiles:'
 replace = 'if False:'
+
+[[rule]]
+name = "an input the Chromecast took right after a wake is sent again"
+file = "src/tv_mcp/service.py"
+find = 'if sent.shown is None or sent.shown == sent.said:'
+replace = 'if True:'

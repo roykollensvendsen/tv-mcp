@@ -334,8 +334,8 @@ def test_a_tv_woken_by_cec_that_is_not_seen_on_in_time_is_said_to_be_on_its_way(
     answer = _run(power.confirm("token-0"))
     assert answer["outcome"] == "unverified"
     assert answer["say"] == (
-        "I asked the garage to switch on; it can take a minute before it is on."
-        " Ask me to wait for it to be on."
+        "I asked the garage to switch on through its Chromecast; it can take a minute before it is on,"
+        " and the Chromecast may take the screen. Ask me to wait for it to be on."
     )
 
 
