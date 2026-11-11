@@ -21,6 +21,7 @@ from tv_mcp.driver import (
     ChangesInput,
     HasPlayer,
     HasSound,
+    ListsInputs,
     ReadsArtMode,
     ReadsInput,
     SeesApps,
@@ -289,20 +290,39 @@ class TvService:
             report["state"] = "showing art" if art else "standby"
 
     async def _add_input(self, tv: Tv, report: dict[str, Any]) -> None:
-        """Add which input the TV shows, when it can say and is on."""
-        found = self._input_driver(tv, ReadsInput)
+        """Add which input the TV shows and what is on its inputs; the TV is asked only while it is on."""
         # The screen's own state when another device plays to it, so a TV in standby is not asked.
-        if found is None or report.get("screen", report.get("state")) != "on":
-            return
-        driver, target = found
-        try:
-            shown = await asyncio.wait_for(cast("ReadsInput", driver).input_shown(target), INPUT_READ_WAIT)
-        except TimeoutError:
-            return  # just woken, it may not say yet; status answers with what it knows
+        on = report.get("screen", report.get("state")) == "on"
+        shown, plugged = await asyncio.gather(self._shown(tv, on=on), self._plugged(tv, on=on))
         if shown:
             report["input"] = shown
-            if device := tv.device_on(shown):
-                report["input_device"] = device
+        entries = _entries(tv, plugged)
+        if entries:
+            report["inputs"] = entries
+        if entry := next((e for e in entries if e["input"] == shown and e["device"]), None):
+            report["input_device"], report["input_device_from"] = entry["device"], entry["from"]
+
+    async def _shown(self, tv: Tv, *, on: bool) -> str | None:
+        """The input the TV says it shows; None when it is off, cannot say, or is slow to."""
+        found = self._input_driver(tv, ReadsInput) if on else None
+        if found is None:
+            return None
+        driver, target = found
+        try:
+            return await asyncio.wait_for(cast("ReadsInput", driver).input_shown(target), INPUT_READ_WAIT)
+        except TimeoutError:
+            return None  # just woken, it may not say yet; status answers with what it knows
+
+    async def _plugged(self, tv: Tv, *, on: bool) -> dict[str, str | None] | None:
+        """The inputs the TV lists as in use; None when it is off, cannot list them, or is slow to."""
+        found = self._input_driver(tv, ListsInputs) if on else None
+        if found is None:
+            return None
+        driver, target = found
+        try:
+            return await asyncio.wait_for(cast("ListsInputs", driver).inputs_plugged(target), INPUT_READ_WAIT)
+        except TimeoutError:
+            return None
 
     async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add whether the TV itself is on, when another device (a Chromecast) plays to it.
@@ -861,6 +881,20 @@ def _known(tv: Tv | None) -> dict[str, Any]:
         return {"tv": None}
     said = {"tv": tv.spoken, "description": tv.description, "brand": tv.brand, "model": tv.model}
     return {k: v for k, v in said.items() if v is not None or k == "tv"}
+
+
+def _entries(tv: Tv, plugged: Mapping[str, str | None] | None) -> list[dict[str, Any]]:
+    """Every input with a device on it, in order, saying whether the TV found it or the owner named it."""
+    found = {
+        key: {"input": INPUTS[key], "device": name, "from": "detected"}
+        for key, name in (plugged or {}).items()
+    }
+    by_hand = {
+        key: {"input": INPUTS[key], "device": name, "from": "set by hand"} for key, name in tv.inputs.items()
+    }
+    # RULE: a name set by hand wins over a detected one
+    entries = found | by_hand
+    return [entries[key] for key in INPUTS if key in entries]
 
 
 def _named_input(tv: Tv, source: str) -> str | dict[str, Any]:

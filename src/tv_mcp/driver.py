@@ -148,6 +148,18 @@ class ReadsInput(Protocol):
 
 
 @runtime_checkable
+class ListsInputs(Protocol):
+    """A driver that can list which of its TV's inputs have something plugged in."""
+
+    async def inputs_plugged(self, tv: Tv) -> dict[str, str | None] | None:
+        """The inputs in use, by key in ``INPUTS``, each with the name its device gave, if any.
+
+        None when the TV cannot say. Only read; no input is changed.
+        """
+        ...
+
+
+@runtime_checkable
 class ChangesInput(Protocol):
     """A driver that can change which input its TV shows."""
 
