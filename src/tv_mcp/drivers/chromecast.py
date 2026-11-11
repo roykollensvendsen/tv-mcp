@@ -154,6 +154,10 @@ class Chromecast:
         """Whether the TV is on, from what HDMI tells the Chromecast."""
         return await asyncio.to_thread(_screen_blocking, address)
 
+    async def on_screen(self, address: str) -> bool | None:
+        """Whether the TV shows the Chromecast's input, from what HDMI tells the Chromecast."""
+        return await asyncio.to_thread(_in_front_blocking, address)
+
     async def playing(self, address: str) -> Playing | None:
         """What plays on the Chromecast, in whatever app: Jellyfin, YouTube or another."""
         return await asyncio.to_thread(_playing_blocking, address)
@@ -390,8 +394,8 @@ def _wake_blocking(address: str) -> bool:  # pragma: no cover - a real device
     return True
 
 
-def _screen_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
-    """True when HDMI says the TV is on, False in standby, None when the Chromecast does not know."""
+def _status_blocking(address: str) -> Any:  # noqa: ANN401  # pragma: no cover - a real device
+    """The Chromecast's own status, with what HDMI tells it; None when it does not answer."""
     try:
         import pychromecast  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415 - the optional chromecast extra
     except ImportError:
@@ -400,10 +404,21 @@ def _screen_blocking(address: str) -> bool | None:  # pragma: no cover - a real 
         cast, _, _ = _connection(address)
     except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
         return None
-    status = cast.status
+    return cast.status
+
+
+def _screen_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
+    """True when HDMI says the TV is on, False in standby, None when the Chromecast does not know."""
+    status = _status_blocking(address)
     if status is None or status.is_stand_by is None:
         return None
     return not status.is_stand_by
+
+
+def _in_front_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
+    """True when HDMI says the TV shows the Chromecast, None when the Chromecast does not know."""
+    status = _status_blocking(address)
+    return None if status is None or status.is_active_input is None else bool(status.is_active_input)
 
 
 #: What the Chromecast shows when no app is open.

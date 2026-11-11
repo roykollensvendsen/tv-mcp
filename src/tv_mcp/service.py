@@ -21,6 +21,7 @@ from tv_mcp.driver import (
     ChangesInput,
     HasPlayer,
     HasSound,
+    KnowsOnScreen,
     ListsInputs,
     ReadsArtMode,
     ReadsInput,
@@ -183,18 +184,29 @@ class TvService:
 
     async def _add_sound(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add to `report` how loud `tv` is and whether it is muted, when the TV says."""
-        driver = self.drivers.get(tv.driver)
-        if (
-            not isinstance(driver, HasSound)
-            or not tv.address
-            or report.get("state") in {ANOTHER_TV, "refused"}
-        ):
+        if report.get("state") in {ANOTHER_TV, "refused"}:
             return
-        level = await driver.volume(tv.address)
-        if level is None:
-            return
-        report["volume"] = level
-        report["muted"] = await driver.muted(tv.address)
+        for driver, address, _ in self._speakers(tv):
+            if address and (level := await driver.volume(address)) is not None:
+                report["volume"] = level
+                report["muted"] = await driver.muted(address)
+                return
+
+    def _speakers(self, tv: Tv) -> list[tuple[HasSound, str, bool]]:
+        """What can change `tv`'s sound, and at which address: the TV itself first.
+
+        The flag says it is the TV itself; a device in it, such as a Chromecast,
+        reaches only the sound of what it plays, not of the TV's other inputs.
+        """
+        found: list[tuple[HasSound, str, bool]] = []
+        power = self.drivers.get(tv.power_driver) if tv.power_driver else None
+        # RULE: the sound goes to the TV itself before the device that plays through it
+        if isinstance(power, HasSound) and tv.power_address:
+            found.append((power, tv.power_address, True))
+        own = self.drivers.get(tv.driver)
+        if isinstance(own, HasSound):
+            found.append((own, tv.address or "", tv.power_driver is None))
+        return found
 
     async def _films_playing(self, tv: Tv) -> bool:
         return await self._watching(tv, again=0) is not None
@@ -753,34 +765,69 @@ class TvService:
                 del self._subtitles[next(iter(self._subtitles))]
         return task
 
-    async def sound(  # noqa: PLR0911 - one refusal per reason
+    async def sound(
         self, command: str, name: str, *, level: int | None = None, relative: bool = False
     ) -> dict[str, Any]:
         """Mute, unmute, or set the volume (0 to 100, or by `level` when relative) on the TV called `name`."""
         tv = self._tv(name)
         if not isinstance(tv, Tv):
             return tv
-        driver = self.drivers.get(tv.driver)
-        if not isinstance(driver, HasSound):
+        speakers = self._speakers(tv)
+        if not speakers:
             return _refused(f"I cannot change the sound on {tv.spoken}. Use the TV's own remote.")
         if wrong := await self._itself(tv):
             return wrong
-        address = tv.address or ""
+        if command not in {"mute", "unmute"} and level is None:
+            return _refused("Say how loud, or how much louder or quieter.")
+        answer: dict[str, Any] = {}
+        for driver, address, itself in speakers:
+            answer = await self._set_sound(tv, driver, address, command, level, relative=relative)
+            if answer["outcome"] == "done":
+                return (
+                    answer if itself else await self._device_only(tv, driver, address, answer, len(speakers))
+                )
+        return answer
+
+    async def _set_sound(  # noqa: PLR0913 - the command and where it goes
+        self, tv: Tv, driver: HasSound, address: str, command: str, level: int | None, *, relative: bool
+    ) -> dict[str, Any]:
+        """Change the sound through `driver` at `address`."""
         if command in {"mute", "unmute"}:
             if not await driver.set_mute(address, on=command == "mute"):
                 return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
             return {"outcome": "done", "say": f"{'Muted' if command == 'mute' else 'Unmuted'} {tv.spoken}."}
-        if level is None:
-            return _refused("Say how loud, or how much louder or quieter.")
         now = await driver.volume(address) if relative else 0
         if now is None:
             return _refused(f"{_capital(tv.spoken)} did not say its volume. Say a level instead, such as 20.")
-        wanted = now + level if relative else level
+        wanted = now + (level or 0) if relative else (level or 0)
         target = max(0, min(wanted, LOUDEST))
         if not await driver.set_volume(address, target):
             return _refused(f"{_capital(tv.spoken)} did not answer. Check that it is on, and try again.")
         capped = f", at most {LOUDEST}" if wanted > LOUDEST else ""
         return {"outcome": "done", "say": f"Volume {target} on {tv.spoken}{capped}.", "volume": target}
+
+    async def _device_only(
+        self, tv: Tv, driver: HasSound, address: str, answer: dict[str, Any], tried: int
+    ) -> dict[str, Any]:
+        """`answer`, unless the device in `tv` took a change the TV's other inputs do not hear."""
+        in_front = await driver.on_screen(address) if isinstance(driver, KnowsOnScreen) else None
+        # RULE: a sound change only the Chromecast took says so
+        if in_front:
+            return answer
+        device = "Chromecast" if tv.driver == "chromecast" else "player"
+        if "volume" in answer:
+            done = f"set its {device} only, to volume {answer['volume']}"
+        else:
+            done = f"{answer['say'].split()[0].lower()} its {device} only"
+        lead = f"{_capital(tv.spoken)} did not answer, so I" if tried > 1 else "I"
+        if in_front is False:
+            say = (
+                f"{lead} {done}. {_capital(tv.spoken)} shows another input, so that sound is unchanged."
+                " Use the TV's own remote for it."
+            )
+        else:
+            say = f"{lead} {done}. Use the TV's own remote for its sound if {tv.spoken} shows another input."
+        return {**answer, "outcome": "unverified", "say": say}
 
     async def seek(self, name: str, seconds: float, *, relative: bool) -> dict[str, Any]:
         """Move what plays on the TV called `name` to `seconds`, or by `seconds` when relative."""

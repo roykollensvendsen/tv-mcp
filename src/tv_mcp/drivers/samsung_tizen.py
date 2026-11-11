@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 import httpx
 
 from tv_mcp.driver import DONE, INPUTS, NO_ANSWER, UNSUPPORTED, InputSent, Playing, TvInfo
+from tv_mcp.drivers import RENDERING, mute_in, soap, volume_in
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -182,8 +183,6 @@ INPUT_SETTLE = 2.0
 KEY_WAIT = 10.0
 #: How each app is named aloud.
 APP_NAMES = {"jellyfin": "Jellyfin", "netflix": "Netflix", "nrk": "NRK TV", "youtube": "YouTube"}
-#: The standard UPnP service the TV takes volume and mute through, on port 9197.
-RENDERING = "urn:schemas-upnp-org:service:RenderingControl:1"
 #: Where a YouTube remote says it comes from; the TV's DIAL answers no one else.
 YOUTUBE_ORIGIN = "https://www.youtube.com"
 #: How many seconds to give YouTube to start and announce its screen.
@@ -298,13 +297,9 @@ class SamsungTizen:
 
     async def _rendering(self, address: str, action: str, arguments: str = "") -> str | None:
         """Call `action` on the TV's standard UPnP volume service; None when it does not answer."""
-        body = (
-            '<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
-            ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
-            f'<u:{action} xmlns:u="{RENDERING}"><InstanceID>0</InstanceID><Channel>Master</Channel>'
-            f"{arguments}</u:{action}></s:Body></s:Envelope>"
+        body, headers = soap(
+            RENDERING, action, f"<InstanceID>0</InstanceID><Channel>Master</Channel>{arguments}"
         )
-        headers = {"Content-Type": 'text/xml; charset="utf-8"', "SOAPACTION": f'"{RENDERING}#{action}"'}
         try:
             response = await self._client.post(
                 f"http://{address}:9197/upnp/control/RenderingControl1",
@@ -318,15 +313,11 @@ class SamsungTizen:
 
     async def volume(self, address: str) -> int | None:
         """The TV's volume now, 0 to 100."""
-        answer = await self._rendering(address, "GetVolume")
-        found = re.search(r"<CurrentVolume>(\d+)</CurrentVolume>", answer or "")
-        return int(found.group(1)) if found else None
+        return volume_in(await self._rendering(address, "GetVolume"))
 
     async def muted(self, address: str) -> bool | None:
         """Whether the TV's sound is off."""
-        answer = await self._rendering(address, "GetMute")
-        found = re.search(r"<CurrentMute>([01])</CurrentMute>", answer or "")
-        return found.group(1) == "1" if found else None
+        return mute_in(await self._rendering(address, "GetMute"))
 
     async def set_volume(self, address: str, level: int) -> bool:
         """Set the TV's volume, 0 to 100; no pairing is needed for this."""
