@@ -254,3 +254,15 @@ name = "an older Samsung that refuses the remote is said as refused"
 file = "src/tv_mcp/drivers/samsung_legacy.py"
 find = 'if answer == "denied":'
 replace = 'if False:'
+
+[[rule]]
+name = "an expired YouTube pairing is made again from the screen"
+file = "src/tv_mcp/drivers/youtube.py"
+find = 'if not paired and not await api\.pair_with_screen_id\(screen_id\):'
+replace = 'if not paired:'
+
+[[rule]]
+name = "a Samsung whose home screen refuses tv-mcp is said as refused"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = 'except RefusedError:'
+replace = 'except ZeroDivisionError:'

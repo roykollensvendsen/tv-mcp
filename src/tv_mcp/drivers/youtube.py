@@ -245,6 +245,38 @@ class FirstThatAnswers:
         return None
 
 
+async def lounge_pairing(api: Any, file: pathlib.Path, screen_id: str) -> bool:  # noqa: ANN401 - pyytlounge's api
+    """Pair `api` with the screen: the pairing kept in `file` while it still works, else a new one.
+
+    YouTube lets a kept pairing run out, and its refresh then fails or breaks;
+    the screen id makes a new one, which is kept, readable only by the owner.
+    """
+    with contextlib.suppress(ValueError, KeyError, TypeError):
+        if kept := _kept(file):
+            api.load_auth_state(kept)
+    paired = False
+    if api.auth.screen_id == screen_id:
+        with contextlib.suppress(Exception):
+            paired = bool(await api.refresh_auth())
+    # RULE: an expired YouTube pairing is made again from the screen
+    if not paired and not await api.pair_with_screen_id(screen_id):
+        return False
+    _keep(file, api.store_auth_state())
+    return True
+
+
+def _kept(file: pathlib.Path) -> Any:  # noqa: ANN401 - pyytlounge's own state
+    """The pairing kept in `file`, or None when there is none."""
+    return json.loads(file.read_text()) if file.is_file() else None
+
+
+def _keep(file: pathlib.Path, state: object) -> None:
+    """Keep `state` in `file`, readable only by the owner, even when the file was there before."""
+    file.touch(mode=0o600)
+    file.chmod(0o600)
+    file.write_text(json.dumps(state))
+
+
 class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
     """Start a video on a screen through YouTube's Lounge, pairing once per TV."""
 
@@ -270,16 +302,10 @@ class PyYtLounge:  # pragma: no cover - reaches YouTube and a real screen
             async def playback_state_changed(self, event: Any) -> None:  # noqa: ANN401 - pyytlounge's event
                 watch.playback(getattr(event.state, "name", ""))
 
-        file = self._folder / f"{tv_key}-youtube"
         async with YtLoungeApi("tv-mcp", Watch()) as api:
-            if file.is_file():
-                with contextlib.suppress(ValueError, KeyError, TypeError):
-                    api.load_auth_state(json.loads(file.read_text()))
-            paired = api.auth.screen_id == screen_id and await api.refresh_auth()
-            if not paired and not await api.pair_with_screen_id(screen_id):
+            if not await lounge_pairing(api, self._folder / f"{tv_key}-youtube", screen_id):
+                self.refusal = "unpaired"
                 return False
-            file.touch(mode=0o600)
-            file.write_text(json.dumps(api.store_auth_state()))
             try:
                 connected = await api.connect()
             except NotSupportedException:

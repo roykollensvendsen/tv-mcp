@@ -41,8 +41,9 @@ REMOTE_REFUSED = (
     "The TV refused tv-mcp's remote. Allow tv-mcp in the TV's own menu, in its list of devices"
     " that may control it; then try again."
 )
-#: How long the owner gets to answer the TV's "allow" question, within the voice's 30 seconds.
-ANSWER_WAIT = 10.0
+#: How long the owner gets to answer the TV's "allow" question: with REACH_WAIT to reach
+#: the remote port first, a press ends before the voice's answer time (server.ANSWER_WITHIN).
+ANSWER_WAIT = 9.0
 #: How long a TV in standby gets to answer; one that is let in answers at once.
 STANDBY_WAIT = 3.0
 #: How long one of the TV's ports gets to answer, when asking whether it is on.
@@ -333,7 +334,7 @@ async def find_service(client: Any, address: str, service: str) -> str | None:  
 async def _press(address: str, key: str, wait: float, *, port: int = REMOTE_PORT) -> bool:
     """Press `key` on the TV's remote port, after it lets tv-mcp in, all within `wait` seconds."""
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), 5.0)
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), REACH_WAIT)
     except (OSError, TimeoutError):
         return False
     try:
