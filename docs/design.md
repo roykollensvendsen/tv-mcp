@@ -236,10 +236,17 @@ Researched 2026-11-09 from sources only; nothing below is tried yet.
    "left alone", and only the owner removes the mark by editing the file.
    `tv_discover` reads only what TVs announce of their own accord, unless the
    owner asks for a full search.
-3. Nothing is retried, and nothing happens on a schedule.
-4. Nothing leaves the home network. No cloud services are used, and the
-   SmartThings route is ruled out because its personal tokens now expire
-   after a day.
+3. Nothing happens on a schedule, and a change is sent again only where a
+   TV is known to drop it: an app's state is asked once more when the TV
+   drops the connection, a YouTube video is asked to start twice, and an
+   input the Chromecast took right after a wake is sent once more. Waiting
+   for something to show, such as YouTube opening, looks again; it does not
+   send anything again.
+4. The TVs, the Chromecast and Jellyfin are reached only on the home
+   network. YouTube is the one exception, and only when the owner switches
+   it on: searching (yt-dlp, or the Data API with the owner's key) and
+   starting a video (the Lounge) go to YouTube's servers. The SmartThings
+   route is ruled out because its personal tokens now expire after a day.
 5. Secrets live in a file the server is pointed at
    (`~/.config/tv-mcp/config.toml`): the TV pairing tokens, the Jellyfin API
    key, the addresses. They are never in an environment variable the bridge

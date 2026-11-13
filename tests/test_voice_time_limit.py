@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Each tool answers within the time the voice gives it, and finishes soon after.
 
-claude-voice gives a plugin tool 30 seconds. A tool still waiting after that is
-cut off, and the voice hears only "MCP tool call failed", with nothing to say
-to the owner. On 2026-11-09 switching the garage TV on did exactly that.
+Two limits apply. The Claude app waits 15 seconds for a tool's answer, so
+every tool answers within server.ANSWER_WITHIN, saying it carries on when its
+work is slower. claude-voice cuts a tool's work off after 30 seconds, and the
+voice then hears only "MCP tool call failed", with nothing to say to the
+owner. On 2026-11-09 switching the garage TV on did exactly that.
 
 So each tool's longest path, added up from the waits it makes, has to leave
 room inside the limit. A new wait, or a longer one, goes into the sum here.

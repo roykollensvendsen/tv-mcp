@@ -486,7 +486,12 @@ class TvService:
             started = await self.lounge.play(tv.key, screen, video.id)
         except Exception:  # noqa: BLE001 - whatever the screen does, the voice gets a sentence
             started = False
-        if not started and getattr(self.lounge, "refusal", None) == "kids":
+        refusal = getattr(self.lounge, "refusal", None)
+        if not started and refusal == "unpaired":
+            return _refused(
+                f"YouTube on {tv.spoken} would not pair with tv-mcp. Open YouTube on the TV, then ask again."
+            )
+        if not started and refusal == "kids":
             return _refused(
                 f"YouTube on {tv.spoken} is waiting for someone to pick a profile, or has a children's "
                 "profile, which takes no videos sent from here. Pick a profile on the TV, and ask again."

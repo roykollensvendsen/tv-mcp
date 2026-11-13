@@ -102,7 +102,7 @@ class _Home:  # pragma: no cover - needs a real TV
             except self._timeout:
                 continue
             if message.get("event") == "ms.channel.unauthorized":
-                return None
+                raise RefusedError(REMOTE_REFUSED)
             if wanted(message):
                 return message
         return None
@@ -471,6 +471,9 @@ class SamsungTizen:
 
         try:
             return await asyncio.wait_for(asyncio.to_thread(ask), 2 * HOME_WAIT)
+        except RefusedError:
+            # RULE: a Samsung whose home screen refuses tv-mcp is said as refused
+            raise
         except Exception:  # noqa: BLE001 - a TV without the channel is changed by its keys instead
             return None
 
