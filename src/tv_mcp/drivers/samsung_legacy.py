@@ -152,7 +152,7 @@ def _send_wake(mac: str, address: str) -> None:  # pragma: no cover - sends to t
 
 async def _reach(address: str, port: int) -> bool:  # pragma: no cover - the network
     try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), 5.0)
+        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), REACH_WAIT)
     except (OSError, TimeoutError):
         return False
     writer.close()
