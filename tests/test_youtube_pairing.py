@@ -102,3 +102,24 @@ def test_a_youtube_screen_that_will_not_pair_is_said_as_that():
     assert answer["say"] == (
         "YouTube on the living room would not pair with tv-mcp. Open YouTube on the TV, then ask again."
     )
+
+
+def test_a_kept_pairing_that_breaks_says_why_in_the_log_without_the_token(tmp_path, caplog):
+    api = Api(refreshes=ConnectionError("cut off at https://example.invalid/?loungeIdToken=secret-1"))
+    with caplog.at_level("WARNING"):
+        _pair(tmp_path, api)
+    assert len(caplog.records) == 1
+    assert "ConnectionError" in caplog.text
+    assert "secret-1" not in caplog.text
+
+
+def test_a_kept_pairing_that_has_run_out_says_so_in_the_log(tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        _pair(tmp_path, Api(refreshes=False))
+    assert "ran out" in caplog.text
+
+
+def test_a_kept_pairing_that_still_works_logs_nothing(tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        _pair(tmp_path, Api())
+    assert caplog.records == []
