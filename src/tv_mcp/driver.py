@@ -196,6 +196,14 @@ class KnowsOnScreen(Protocol):
         ...
 
 
+class RefusedError(Exception):
+    """A TV or service said no for a reason the owner can fix; the message says what to do.
+
+    Raised from a driver and read aloud as the tool's answer, so the voice says
+    the real reason instead of "did not answer" or "found nothing".
+    """
+
+
 @runtime_checkable
 class ShowsYouTube(Protocol):
     """A driver whose TVs can show YouTube."""

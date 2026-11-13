@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from tv_mcp.driver import RefusedError
 from tv_mcp.media import CastLogin, Chapter, Cue, MediaItem, Session, parse_srt
 
 if TYPE_CHECKING:
@@ -22,6 +23,30 @@ TIMEOUT = 5.0
 #: A subtitle track inside the film is pulled out of it first, which takes longer.
 SUBTITLE_TIMEOUT = 30.0
 SEARCH_LIMIT = 5
+
+
+#: Said when the server no longer takes the API key.
+KEY_REFUSED = (
+    "Jellyfin refused tv-mcp's API key. Add a new key from Jellyfin's dashboard, under API Keys,"
+    " to ~/.config/tv-mcp/jellyfin-key, then restart the TV plugin."
+)
+#: Said when the server no longer takes the user's login the Chromecast plays under.
+LOGIN_REFUSED = (
+    "Jellyfin refused the login the Chromecast plays under. Ask a Claude session in tv-mcp to sign in"
+    " again with Quick Connect, which saves it in ~/.config/tv-mcp/jellyfin-user-token,"
+    " then restart the TV plugin."
+)
+#: What a server says to a key or login it does not take.
+NOT_LET_IN = {401, 403}
+
+
+def _checked(response: httpx.Response, refusal: str = KEY_REFUSED) -> httpx.Response:
+    """`response`, unless the server refused the key: then the refusal, said as such."""
+    # RULE: a Jellyfin key that is refused is said as refused
+    if response.status_code in NOT_LET_IN:
+        raise RefusedError(refusal)
+    response.raise_for_status()
+    return response
 
 
 class Jellyfin:
@@ -47,8 +72,7 @@ class Jellyfin:
         response = await self._client.get(
             self._url + path, params=params, headers=self._headers, timeout=TIMEOUT
         )
-        response.raise_for_status()
-        return response.json()
+        return _checked(response).json()
 
     async def search(self, term: str) -> list[MediaItem]:
         """Films and episodes whose title matches `term`."""
@@ -86,7 +110,7 @@ class Jellyfin:
             headers=self._headers,
             timeout=TIMEOUT,
         )
-        response.raise_for_status()
+        _checked(response)
 
     async def _details(self, item_id: str) -> dict[str, Any] | None:
         params = {"ids": item_id, "Fields": "MediaSources,People,Chapters"}
@@ -115,7 +139,7 @@ class Jellyfin:
                 headers=self._headers,
                 timeout=SUBTITLE_TIMEOUT,
             )
-            response.raise_for_status()
+            _checked(response)
         except httpx.HTTPError:
             return None
         return parse_srt(response.text)
@@ -145,7 +169,7 @@ class Jellyfin:
             headers=self._headers,
             timeout=TIMEOUT,
         )
-        response.raise_for_status()
+        _checked(response)
 
     async def control(self, session_id: str, command: str) -> None:
         """Pause, resume or stop what the session is playing."""
@@ -154,7 +178,7 @@ class Jellyfin:
             headers=self._headers,
             timeout=TIMEOUT,
         )
-        response.raise_for_status()
+        _checked(response)
 
 
 #: Jellyfin counts time in ticks of 100 nanoseconds.
@@ -230,7 +254,9 @@ async def cast_login(
     """
     headers = {"Authorization": f'MediaBrowser Token="{token}"'}
     try:
-        me = (await client.get(f"{url.rstrip('/')}/Users/Me", headers=headers, timeout=TIMEOUT)).json()
+        me = _checked(
+            await client.get(f"{url.rstrip('/')}/Users/Me", headers=headers, timeout=TIMEOUT), LOGIN_REFUSED
+        ).json()
         info = (await client.get(f"{url.rstrip('/')}/System/Info", headers=headers, timeout=TIMEOUT)).json()
         port = httpx.URL(url).port or 8096
         server = f"http://{local_address(cast_address)}:{port}"

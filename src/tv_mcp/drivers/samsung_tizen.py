@@ -21,8 +21,9 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 import httpx
+from samsungtvws.exceptions import UnauthorizedError
 
-from tv_mcp.driver import DONE, INPUTS, NO_ANSWER, UNSUPPORTED, InputSent, Playing, TvInfo
+from tv_mcp.driver import DONE, INPUTS, NO_ANSWER, UNSUPPORTED, InputSent, Playing, RefusedError, TvInfo
 from tv_mcp.drivers import RENDERING, mute_in, soap, volume_in
 
 if TYPE_CHECKING:
@@ -49,6 +50,13 @@ def _samsung_remote(address: str, token_file: pathlib.Path) -> Remote:  # pragma
         host=address, port=8002, name="tv-mcp", timeout=10, token_file=str(token_file)
     )
     return remote
+
+
+#: Said when the TV has said no to tv-mcp's remote, so keys and power cannot reach it.
+REMOTE_REFUSED = (
+    "The TV refused tv-mcp's remote. Allow tv-mcp on the TV under Settings, General,"
+    " External Device Manager, Device Connection Manager, Device List; then try again."
+)
 
 
 class HomeChannel(Protocol):
@@ -438,6 +446,8 @@ class SamsungTizen:
 
         try:
             await asyncio.wait_for(asyncio.to_thread(press), KEY_WAIT)
+        except UnauthorizedError as refusal:
+            raise RefusedError(REMOTE_REFUSED) from refusal
         except Exception:  # noqa: BLE001 - any failure of the remote connection means no answer
             return False
         return True
@@ -550,7 +560,10 @@ class SamsungTizen:
                 remote.close()
 
         try:
-            await asyncio.to_thread(press)
+            await asyncio.wait_for(asyncio.to_thread(press), HOLD_TO_SWITCH_OFF + KEY_WAIT)
+        except UnauthorizedError as refused:
+            # RULE: a Samsung that refuses the remote is said as refused
+            raise RefusedError(REMOTE_REFUSED) from refused
         except Exception:  # noqa: BLE001 - any failure of the TV's connection means it did not switch
             return False
         return True
