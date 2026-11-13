@@ -20,6 +20,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any
 
+from tv_mcp.driver import RefusedError
 from tv_mcp.video import Video
 
 if TYPE_CHECKING:
@@ -155,6 +156,17 @@ class YtDlpSearch:
         return video_from_page(await asyncio.to_thread(run))
 
 
+#: Said when the Data API's searches for the day are used up and nothing else found anything.
+QUOTA_USED = (
+    "YouTube's official search has used its searches for today, and the other search found nothing."
+    " Try other words, or try again tomorrow."
+)
+
+
+class QuotaUsedError(RefusedError):
+    """YouTube's Data API has no searches left today."""
+
+
 class DataApiSearch:
     """Search with YouTube's Data API: official, needs a key, 100 searches a day."""
 
@@ -190,6 +202,8 @@ class DataApiSearch:
 
     async def _get(self, path: str, params: dict[str, str]) -> dict[str, Any]:
         response = await self._client.get(API + path, params={**params, "key": self._key}, timeout=10)
+        if response.status_code == 403 and "quotaExceeded" in response.text:  # noqa: PLR2004 - HTTP Forbidden
+            raise QuotaUsedError(QUOTA_USED)
         response.raise_for_status()
         page: dict[str, Any] = response.json()
         return page
@@ -212,6 +226,9 @@ class FirstThatAnswers:
             return found
         try:
             return await self._then.search(words)
+        except QuotaUsedError:
+            # RULE: a used-up YouTube quota is said as used up
+            raise
         except Exception:  # noqa: BLE001
             return []
 

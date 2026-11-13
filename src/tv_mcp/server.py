@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from mcp.server.mcpserver import MCPServer
 
+from tv_mcp.driver import RefusedError
 from tv_mcp.tools import DEFAULT_FEATURES, FEATURES
 
 if TYPE_CHECKING:
@@ -65,10 +66,8 @@ class _Guarded:
                         answer = {"success": False, "outcome": "working", "say": WORKING}
                     else:
                         answer = {"success": False, "outcome": "refused", "say": DROPPED}
-                except (httpx.HTTPError, OSError):
-                    answer = {"success": False, "outcome": "refused", "say": DROPPED}
-                except Exception:  # noqa: BLE001 - whatever broke, the voice gets a sentence
-                    answer = {"success": False, "outcome": "refused", "say": BROKE}
+                except Exception as failure:  # noqa: BLE001 - whatever broke, the voice gets a sentence
+                    answer = {"success": False, "outcome": "refused", "say": _why(failure)}
                 answer.setdefault("simulated", self._simulated)
                 if self._simulated and isinstance(answer.get("say"), str):
                     answer["say"] = "Simulated: " + answer["say"]
@@ -78,6 +77,14 @@ class _Guarded:
             return register(answered)
 
         return guard
+
+
+def _why(failure: Exception) -> str:
+    """What to say for a tool that failed with `failure`."""
+    # RULE: a refusal reaches the voice as its own sentence
+    if isinstance(failure, RefusedError):
+        return str(failure)
+    return DROPPED if isinstance(failure, (httpx.HTTPError, OSError)) else BROKE
 
 
 def _ended(work: asyncio.Future[Any]) -> None:

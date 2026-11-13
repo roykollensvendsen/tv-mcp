@@ -25,7 +25,7 @@ import re
 import socket
 from typing import TYPE_CHECKING, Any
 
-from tv_mcp.driver import INPUTS, InputSent, TvInfo
+from tv_mcp.driver import INPUTS, InputSent, RefusedError, TvInfo
 from tv_mcp.drivers import RENDERING, mute_in, soap, volume_in
 
 if TYPE_CHECKING:
@@ -36,8 +36,13 @@ if TYPE_CHECKING:
 REMOTE_PORT, MEDIA_PORT = 55000, 7676
 #: The name the TV shows in its "allow" question, and remembers.
 NAME = "tv-mcp"
+#: Said when the TV has said no to tv-mcp's remote.
+REMOTE_REFUSED = (
+    "The TV refused tv-mcp's remote. Allow tv-mcp in the TV's own menu, in its list of devices"
+    " that may control it; then try again."
+)
 #: How long the owner gets to answer the TV's "allow" question, within the voice's 30 seconds.
-ANSWER_WAIT = 15.0
+ANSWER_WAIT = 10.0
 #: How long a TV in standby gets to answer; one that is let in answers at once.
 STANDBY_WAIT = 3.0
 #: How long one of the TV's ports gets to answer, when asking whether it is on.
@@ -147,7 +152,7 @@ def _send_wake(mac: str, address: str) -> None:  # pragma: no cover - sends to t
 
 async def _reach(address: str, port: int) -> bool:  # pragma: no cover - the network
     try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), REACH_WAIT)
+        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), 5.0)
     except (OSError, TimeoutError):
         return False
     writer.close()
@@ -325,21 +330,17 @@ async def find_service(client: Any, address: str, service: str) -> str | None:  
     return None
 
 
-async def _press(address: str, key: str, wait: float) -> bool:  # pragma: no cover - a real TV
-    """Press `key` on the TV's remote port, after it lets tv-mcp in."""
+async def _press(address: str, key: str, wait: float, *, port: int = REMOTE_PORT) -> bool:
+    """Press `key` on the TV's remote port, after it lets tv-mcp in, all within `wait` seconds."""
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, REMOTE_PORT), 5.0)
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), 5.0)
     except (OSError, TimeoutError):
         return False
     try:
-        writer.write(auth_packet(NAME))
-        await writer.drain()
-        answer = "waiting"
-        while answer == "waiting":
-            header = await asyncio.wait_for(reader.readexactly(3), wait)
-            await reader.readexactly(int.from_bytes(header[1:3], "little"))
-            size = int.from_bytes(await reader.readexactly(2), "little")
-            answer = answer_of(await reader.readexactly(size))
+        answer = await asyncio.wait_for(_let_in(reader, writer), wait)
+        # RULE: an older Samsung that refuses the remote is said as refused
+        if answer == "denied":
+            raise RefusedError(REMOTE_REFUSED)
         if answer != "allowed":
             return False
         writer.write(key_packet(key))
@@ -349,3 +350,16 @@ async def _press(address: str, key: str, wait: float) -> bool:  # pragma: no cov
     finally:
         writer.close()
     return True
+
+
+async def _let_in(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> str:
+    """Ask the TV to let tv-mcp's remote in; what it said once it stopped "waiting"."""
+    writer.write(auth_packet(NAME))
+    await writer.drain()
+    answer = "waiting"
+    while answer == "waiting":
+        header = await reader.readexactly(3)
+        await reader.readexactly(int.from_bytes(header[1:3], "little"))
+        size = int.from_bytes(await reader.readexactly(2), "little")
+        answer = answer_of(await reader.readexactly(size))
+    return answer
