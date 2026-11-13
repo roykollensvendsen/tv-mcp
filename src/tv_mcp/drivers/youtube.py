@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     import httpx
 
     from tv_mcp.video import VideoSearch
+
+_log = logging.getLogger(__name__)
 
 #: How many videos a search asks for.
 SEARCH_SIZE = 8
@@ -254,15 +257,25 @@ async def lounge_pairing(api: Any, file: pathlib.Path, screen_id: str) -> bool: 
     with contextlib.suppress(ValueError, KeyError, TypeError):
         if kept := _kept(file):
             api.load_auth_state(kept)
-    paired = False
-    if api.auth.screen_id == screen_id:
-        with contextlib.suppress(Exception):
-            paired = bool(await api.refresh_auth())
+    paired = api.auth.screen_id == screen_id and await _refreshed(api)
     # RULE: an expired YouTube pairing is made again from the screen
     if not paired and not await api.pair_with_screen_id(screen_id):
         return False
     _keep(file, api.store_auth_state())
     return True
+
+
+async def _refreshed(api: Any) -> bool:  # noqa: ANN401 - pyytlounge's api
+    """Whether the kept pairing still works; the log says why when it does not, never its token."""
+    try:
+        if await api.refresh_auth():
+            return True
+        why = "it ran out"
+    except Exception as broke:  # noqa: BLE001 - any failure means pairing again
+        # The kind of failure only: its message can carry the pairing's token.
+        why = f"its refresh broke with {type(broke).__name__}"
+    _log.warning("YouTube's kept pairing no longer works, because %s; pairing again from the screen.", why)
+    return False
 
 
 def _kept(file: pathlib.Path) -> Any:  # noqa: ANN401 - pyytlounge's own state
