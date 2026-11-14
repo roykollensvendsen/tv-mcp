@@ -36,6 +36,8 @@ def _run(tmp_path, monkeypatch, red, *args):
     monkeypatch.setattr(mutate, "ROOT", tmp_path)
     monkeypatch.setattr(mutate, "ROWS", rows)
     monkeypatch.setattr(mutate, "RECOVERY", tmp_path / "scripts/.mutate-recovery.json")
+    # Its own: the real one holds the temporary files of the mutation run this may be inside.
+    monkeypatch.setattr(mutate, "MUTATE_TMP", tmp_path / "mutate-tmp")
     monkeypatch.setattr(mutate, "run_suite", lambda: (len(red), red))
     monkeypatch.setattr(sys, "argv", ["mutate.py", *args])
     return mutate.main()
