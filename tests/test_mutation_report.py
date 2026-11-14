@@ -48,7 +48,7 @@ def test_a_failing_mutation_run_still_writes_its_report(tmp_path, monkeypatch):
     assert json.loads(report.read_text()) == {
         "killed": 0,
         "total": 1,
-        "rules": [{"name": "a guard holds", "file": "src/rule.py", "killed": 0, "own_test_red": False}],
+        "rules": [{"name": "a guard holds", "file": "src/rule.py", "tests_red": 0, "own_test_red": False}],
     }
 
 
@@ -58,7 +58,7 @@ def test_a_passing_mutation_run_reports_each_rule_killed_by_its_own_test(tmp_pat
     assert _run(tmp_path, monkeypatch, ["test_a_guard_holds"], "--json", str(report)) == 0
     figures = json.loads(report.read_text())
     assert (figures["killed"], figures["total"]) == (1, 1)
-    assert figures["rules"][0]["own_test_red"] is True
+    assert (figures["rules"][0]["tests_red"], figures["rules"][0]["own_test_red"]) == (1, True)
 
 
 def test_the_readable_table_goes_to_the_check_s_summary(tmp_path, monkeypatch):
