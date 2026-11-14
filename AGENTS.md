@@ -27,8 +27,8 @@ nothing in `src/` until the owner has said yes to it.**
 4. **Never touch a real TV** (pairing, switching on, installing) unless the
    owner asks for it in this session. Reading a TV's information page is
    fine.
-5. Every line marked `# RULE:` has a row in `scripts/mutations.toml` and a
-   test named after it, and `uv run python scripts/mutate.py` must show each
+5. Every line marked `# RULE:` has a row in a file of its own,
+   `scripts/mutations/<its file>/<its words>.toml`, and a test named after it, and `uv run python scripts/mutate.py` must show each
    rule's own test going red.
 
 ## Commands

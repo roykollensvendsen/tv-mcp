@@ -1,0 +1,5 @@
+[[rule]]
+name = "an input is changed by its tile when the TV lists one"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = 'if tiles and source in tiles:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "art mode is only read, never set"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = '                mode = channel\.get_artmode\(\)'
+replace = 'mode = channel.set_artmode("on") or channel.get_artmode()'

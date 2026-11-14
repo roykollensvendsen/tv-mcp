@@ -1,0 +1,5 @@
+[[rule]]
+name = "a title that matches several items is refused, naming them"
+file = "src/tv_mcp/service.py"
+find = 'return _refused\(f"\{title!r\} could be: \{options\}\. Say which one\."\)'
+replace = 'return found[0].id'

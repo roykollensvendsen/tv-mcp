@@ -1,0 +1,5 @@
+[[rule]]
+name = "a power token expires after thirty seconds"
+file = "src/tv_mcp/power.py"
+find = '        if self\._clock\(\) - pending\.asked_at > EXPIRES:'
+replace = 'if False:'

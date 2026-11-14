@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sound change only the Chromecast took says so"
+file = "src/tv_mcp/service.py"
+find = 'if in_front:'
+replace = 'if True:'

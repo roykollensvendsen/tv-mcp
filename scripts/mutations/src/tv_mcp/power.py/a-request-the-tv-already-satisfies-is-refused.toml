@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request the TV already satisfies is refused"
+file = "src/tv_mcp/power.py"
+find = '        if now == state:'
+replace = 'if False:'

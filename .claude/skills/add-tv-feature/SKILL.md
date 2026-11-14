@@ -45,7 +45,9 @@ writing the code; a test that was never red proves nothing.
 
 A rule (a refusal, a limit, a safety check) is one line marked
 `# RULE: what it says`, with a test named after those words
-(`test_what_it_says`) and a row in `scripts/mutations.toml`.
+(`test_what_it_says`) and a row in
+`scripts/mutations/<its file>/<its words>.toml`, for example
+`scripts/mutations/src/tv_mcp/server.py/a-power-change-asks-first.toml`.
 `uv run python scripts/mutate.py` must show that rule's own test going red.
 
 ## 4. Make the tool small enough for a voice

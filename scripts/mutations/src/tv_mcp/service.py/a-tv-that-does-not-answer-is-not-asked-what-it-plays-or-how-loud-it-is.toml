@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV that does not answer is not asked what it plays or how loud it is"
+file = "src/tv_mcp/service.py"
+find = '            if not tv\.hands_off and report\["state"\] != UNREACHABLE:'
+replace = 'if not tv.hands_off:'

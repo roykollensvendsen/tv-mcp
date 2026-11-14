@@ -1,0 +1,5 @@
+[[rule]]
+name = "a switch is refused when the TV changed since the question"
+file = "src/tv_mcp/power.py"
+find = '        if await self\._state\(pending\.tv\) == wanted:'
+replace = 'if False:'

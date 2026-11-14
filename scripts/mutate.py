@@ -3,10 +3,13 @@
 
 Green on a first run proves nothing: a test that has never been red tests
 nothing. Where a rule is written before its test, the test is run red first.
-Where a rule already exists, this is the substitute. Every rule lives in
-scripts/mutations.toml, one row each. Run it from the repository root:
+Where a rule already exists, this is the substitute. Every rule has one row,
+in a file of its own under scripts/mutations/. Run it from the repository root:
 
-    uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md]
+    uv run python scripts/mutate.py [--json mutations.json]
+
+`--json` writes the run's figures for the checks to keep; in a check, the
+readable table goes to the run's summary page. Neither is ever committed.
 
 A kill is not enough on its own. A mutation breaks whatever it breaks, and it
 can break a test for an incidental reason — a documented example whose output
@@ -27,9 +30,14 @@ import re
 import subprocess
 import sys
 import tomllib
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TABLE = ROOT / "scripts/mutations.toml"
+#: One row per file: scripts/mutations/<the row's `file`, extension included>/<the
+#: rule's words>.toml. Every pull request that added a row at the end of one shared
+#: table collided with every other; a file per row only meets another pull request
+#: adding the same rule.
+ROWS = ROOT / "scripts/mutations"
 #: Where the one mutated file is recorded while it is mutated. A `finally` does
 #: not run when the process is killed, so without this a hard stop leaves a
 #: source file switched off and the next person wondering why the suite is red.
@@ -45,6 +53,56 @@ def test_name_for(rule: str) -> str:
     """
     words = re.sub(r"[^a-z0-9]+", "_", rule.lower())
     return "test_" + re.sub(r"_+", "_", words).strip("_")
+
+
+def row_path(rule: dict[str, Any]) -> pathlib.PurePosixPath:
+    """Where a rule's row belongs, under ``ROWS``: its source file's whole path, its own words.
+
+    A rule in ``src/tv_mcp/server.py`` named "a power change asks first" belongs at
+    ``src/tv_mcp/server.py/a-power-change-asks-first.toml``.
+    """
+    words = re.sub(r"[^a-z0-9]+", "-", str(rule["name"]).lower()).strip("-")
+    if not words:
+        msg = f"the rule {rule['name']!r} has no letter or digit to file its row under; reword it"
+        raise SystemExit(msg)
+    return pathlib.PurePosixPath(rule["file"]) / f"{words}.toml"
+
+
+def _rows_in(path: pathlib.Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = tomllib.loads(path.read_text()).get("rule", [])
+    return rows
+
+
+def all_rows(folder: pathlib.Path | None = None) -> list[dict[str, Any]]:
+    """Every row, one file each, in path order."""
+    folder = ROWS if folder is None else folder
+    found: list[tuple[str, dict[str, Any]]] = []
+    for path in sorted(folder.rglob("*.toml")) if folder.is_dir() else []:
+        found += [(f"{folder.name}/{path.relative_to(folder).as_posix()}", rule) for rule in _rows_in(path)]
+    where: dict[str, str] = {}
+    for place, rule in found:
+        if rule["name"] in where:
+            msg = (
+                f"the rule {rule['name']!r} has two rows, in {where[rule['name']]} and in {place};"
+                f" delete one and keep {folder.name}/{row_path(rule)}"
+            )
+            raise SystemExit(msg)
+        where[rule["name"]] = place
+    return [rule for _, rule in found]
+
+
+def misfiled(folder: pathlib.Path | None = None) -> list[str]:
+    """Row files that hold other than one row, or sit where their rule does not put them."""
+    folder = ROWS if folder is None else folder
+    found = []
+    for path in sorted(folder.rglob("*.toml")) if folder.is_dir() else []:
+        here = pathlib.PurePosixPath(path.relative_to(folder).as_posix())
+        rows = _rows_in(path)
+        if len(rows) != 1:
+            found.append(f"{here} holds {len(rows)} rows; give each rule a file of its own")
+        elif here != (belongs := row_path(rows[0])):
+            found.append(f"{here} should be {belongs}; move it there")
+    return found
 
 
 def line_of(text: str, pattern: str, occurrence: int) -> int:
@@ -118,15 +176,15 @@ def run_suite() -> tuple[int, list[str]]:
 def main() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
+    parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks")
     args = parser.parse_args()
 
     repair()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
-    rules = tomllib.loads(TABLE.read_text()).get("rule", [])
+    rules = all_rows()
     if not rules:
-        print(f"no rules in {TABLE.relative_to(ROOT)} yet; add one per rule the code enforces")  # noqa: T201
+        print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
         return 0
     results = []
     lost: list[str] = []
@@ -156,7 +214,7 @@ def main() -> int:
             # A kill by some other test is not evidence about this rule.
             own = test_name_for(rule["name"])
             by_its_own = own in failed
-            results.append((rule["name"], count, own, by_its_own))
+            results.append((rule["name"], rule["file"], count, own, by_its_own))
             verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
             print(f"{verdict} {rule['name']}: {count}")  # noqa: T201
     finally:
@@ -164,8 +222,11 @@ def main() -> int:
             restore(*standing)
         RECOVERY.unlink(missing_ok=True)
 
-    survived = [name for name, count, _, _ in results if count == 0]
-    lucky = [name for name, count, _, own in results if count and not own]
+    survived = [name for name, _, count, _, _ in results if count == 0]
+    lucky = [name for name, _, count, _, own in results if count and not own]
+    # Written before a failing run exits: a run where a rule survived is exactly
+    # what the checks' page has to show, not the last run that passed.
+    publish(args.json, results, survived, lucky)
     proven = len(results) - len(survived) - len(lucky)
     print(f"\n{proven}/{len(results)} rules turned off the test that names them")  # noqa: T201
     if survived:
@@ -175,16 +236,35 @@ def main() -> int:
     if lost:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
-    if args.write:
-        args.write.write_text(report(results, survived, lucky))
     return 1 if survived or lucky or lost else 0
 
 
-def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky: list[str]) -> str:
-    """Render the run as the evidence page."""
+Result = tuple[str, str, int, str, bool]
+
+
+def publish(to: pathlib.Path | None, results: list[Result], survived: list[str], lucky: list[str]) -> None:
+    """Give the run to the checks: its figures to `to`, its table to the run's summary page."""
+    if to:
+        to.write_text(json.dumps(figures(results), indent=2) + "\n")
+    if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+        with pathlib.Path(summary).open("a") as page:
+            page.write(report(results, survived, lucky))
+
+
+def figures(results: list[Result]) -> dict[str, Any]:
+    """The run as numbers: per rule, its name, file, tests gone red and whether its own was one."""
+    rules = [
+        {"name": name, "file": file, "killed": count, "own_test_red": own_red}
+        for name, file, count, _, own_red in results
+    ]
+    return {"killed": sum(rule["own_test_red"] for rule in rules), "total": len(rules), "rules": rules}
+
+
+def report(results: list[Result], survived: list[str], lucky: list[str]) -> str:
+    """Render the run as a readable table, for the checks' summary page."""
     rows = "\n".join(
         f"| {name} | {count} | `{own}` | {'yes' if by_own else 'NO'} |"
-        for name, count, own, by_own in results
+        for name, _, count, own, by_own in results
     )
     proven = len(results) - len(survived) - len(lucky)
     verdict = (
@@ -194,9 +274,8 @@ def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky
     )
     return f"""# Every rule, turned off in turn
 
-*Run {dt.datetime.now(dt.UTC).date()} by `python scripts/mutate.py --write
-evidence/tests/rule-mutations.md`, which is how to repeat it. The script
-restores every file it touched before it exits.*
+*Run {dt.datetime.now(dt.UTC).date()} by `python scripts/mutate.py`, which is
+how to repeat it. The script restores every file it touched before it exits.*
 
 Green on a first run proves nothing: a test that has never been red tests
 nothing. Where a rule is written before its test, the test is run red first.
@@ -217,8 +296,8 @@ it names. It proves each rule is load-bearing: switch it off and a named test
 says so. The last column is why that is worth more than a count: a mutation can
 break a test for an incidental reason, and a `NO` there fails this script even
 though something went red. A new rule follows the order in `CONTRIBUTING.md`
-instead, a failing test first, and is added to `scripts/mutations.toml`, which
-`tests/test_rules_have_evidence.py` requires.
+instead, a failing test first, and gets a row of its own under `scripts/mutations/`,
+which `tests/test_rules_have_evidence.py` requires.
 """
 
 

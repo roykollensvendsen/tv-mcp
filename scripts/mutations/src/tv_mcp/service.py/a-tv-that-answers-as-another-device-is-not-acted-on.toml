@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV that answers as another device is not acted on"
+file = "src/tv_mcp/service.py"
+find = '        if info is not None and tv\.device_id and info\.device_id != tv\.device_id:'
+replace = 'if False:'

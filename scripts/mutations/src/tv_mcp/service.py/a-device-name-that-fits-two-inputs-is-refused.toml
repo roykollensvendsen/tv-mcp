@@ -1,0 +1,5 @@
+[[rule]]
+name = "a device name that fits two inputs is refused"
+file = "src/tv_mcp/service.py"
+find = 'if len\(fits\) == 1:'
+replace = 'if fits:'
