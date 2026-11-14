@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool still working at the deadline says it carries on"
+file = "src/tv_mcp/server.py"
+find = '                    answer = await asyncio\.wait_for\(asyncio\.shield\(work\), ANSWER_WITHIN\)'
+replace = 'answer = await asyncio.wait_for(work, ANSWER_WITHIN)'

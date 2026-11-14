@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hands-off TV is never contacted"
+file = "src/tv_mcp/service.py"
+find = 'if tv\.hands_off or tv\.address is None:'
+replace = 'if tv.address is None:'

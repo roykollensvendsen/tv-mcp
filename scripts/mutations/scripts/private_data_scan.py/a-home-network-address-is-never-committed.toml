@@ -1,0 +1,5 @@
+[[rule]]
+name = "a home-network address is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"home-network address \{m\}" for m in PRIVATE_IPV4\.findall\(text\)\]'
+replace = 'pass'

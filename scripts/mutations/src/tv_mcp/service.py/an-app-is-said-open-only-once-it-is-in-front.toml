@@ -1,0 +1,5 @@
+[[rule]]
+name = "an app is said open only once it is in front"
+file = "src/tv_mcp/service.py"
+find = 'if not isinstance\(driver, SeesApps\):'
+replace = 'if True:'

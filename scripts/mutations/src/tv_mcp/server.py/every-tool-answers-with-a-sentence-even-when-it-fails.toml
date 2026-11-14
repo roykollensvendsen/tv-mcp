@@ -1,0 +1,5 @@
+[[rule]]
+name = "every tool answers with a sentence, even when it fails"
+file = "src/tv_mcp/server.py"
+find = '        FEATURES\[feature\]\(guarded, service, simulated\)  # type: ignore\[arg-type\]'
+replace = 'FEATURES[feature](server, service, simulated)'

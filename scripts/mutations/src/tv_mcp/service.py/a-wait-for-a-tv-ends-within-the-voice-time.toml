@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wait for a TV ends within the voice time"
+file = "src/tv_mcp/service.py"
+find = '        until = self\._clock\(\) \+ WAIT_WITHIN'
+replace = 'until = self._clock() + 60 * WAIT_WITHIN'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a confirmed switch answers once, within the voice time"
+file = "src/tv_mcp/power.py"
+find = '        until = started \+ CONFIRM_WITHIN'
+replace = 'until = started + 60 * CONFIRM_WITHIN'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a Jellyfin key that is refused is said as refused"
+file = "src/tv_mcp/drivers/jellyfin.py"
+find = 'if response\.status_code in NOT_LET_IN:'
+replace = 'if False:'

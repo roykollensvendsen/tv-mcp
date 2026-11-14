@@ -1,0 +1,5 @@
+[[rule]]
+name = "a value from the settings file is never committed"
+file = "scripts/private_data_scan.py"
+find = 'found \+= \[f"a value from \{SETTINGS\.name\}" for s in secrets if s in text\]'
+replace = 'pass'

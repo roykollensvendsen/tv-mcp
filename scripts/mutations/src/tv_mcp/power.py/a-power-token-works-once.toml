@@ -1,0 +1,5 @@
+[[rule]]
+name = "a power token works once"
+file = "src/tv_mcp/power.py"
+find = '        self\._pending = None'
+replace = 'pass'

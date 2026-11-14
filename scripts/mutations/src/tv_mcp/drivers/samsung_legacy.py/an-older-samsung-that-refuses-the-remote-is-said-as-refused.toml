@@ -1,0 +1,5 @@
+[[rule]]
+name = "an older Samsung that refuses the remote is said as refused"
+file = "src/tv_mcp/drivers/samsung_legacy.py"
+find = 'if answer == "denied":'
+replace = 'if False:'

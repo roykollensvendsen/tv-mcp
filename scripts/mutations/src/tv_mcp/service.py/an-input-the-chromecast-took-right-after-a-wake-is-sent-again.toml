@@ -1,0 +1,5 @@
+[[rule]]
+name = "an input the Chromecast took right after a wake is sent again"
+file = "src/tv_mcp/service.py"
+find = 'if sent.shown is None or sent.shown == sent.said:'
+replace = 'if True:'

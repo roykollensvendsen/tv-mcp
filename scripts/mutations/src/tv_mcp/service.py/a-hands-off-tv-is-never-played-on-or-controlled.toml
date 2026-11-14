@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hands-off TV is never played on or controlled"
+file = "src/tv_mcp/service.py"
+find = '        if tv\.hands_off:'
+replace = 'if False:'

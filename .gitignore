@@ -24,3 +24,6 @@ jellyfin-key
 
 # Claude Code settings on this machine, and the backups an install leaves beside them.
 .claude/settings.local.json*
+
+# The mutation run's figures; the checks keep them, the repository never does.
+mutations.json

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a used-up YouTube quota is said as used up"
+file = "src/tv_mcp/drivers/youtube.py"
+find = 'except QuotaUsedError:'
+replace = 'except ZeroDivisionError:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a Samsung whose home screen refuses tv-mcp is said as refused"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = 'except RefusedError:'
+replace = 'except ZeroDivisionError:'

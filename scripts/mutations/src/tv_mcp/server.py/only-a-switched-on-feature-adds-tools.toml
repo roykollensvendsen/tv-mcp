@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a switched-on feature adds tools"
+file = "src/tv_mcp/server.py"
+find = 'for feature in wanted:'
+replace = 'for feature in FEATURES:'

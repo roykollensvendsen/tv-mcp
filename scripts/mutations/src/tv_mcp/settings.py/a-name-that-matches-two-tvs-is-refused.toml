@@ -1,0 +1,5 @@
+[[rule]]
+name = "a name that matches two TVs is refused"
+file = "src/tv_mcp/settings.py"
+find = 'if len\(matches\) > 1:'
+replace = 'if False:'

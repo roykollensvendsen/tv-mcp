@@ -1,0 +1,5 @@
+[[rule]]
+name = "a refusal reaches the voice as its own sentence"
+file = "src/tv_mcp/server.py"
+find = 'if isinstance\(failure, RefusedError\):'
+replace = 'if False:'

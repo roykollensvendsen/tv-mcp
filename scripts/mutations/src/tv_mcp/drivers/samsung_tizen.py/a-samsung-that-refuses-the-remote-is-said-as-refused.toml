@@ -1,0 +1,5 @@
+[[rule]]
+name = "a Samsung that refuses the remote is said as refused"
+file = "src/tv_mcp/drivers/samsung_tizen.py"
+find = 'except UnauthorizedError as refused:'
+replace = 'except ZeroDivisionError as refused:'

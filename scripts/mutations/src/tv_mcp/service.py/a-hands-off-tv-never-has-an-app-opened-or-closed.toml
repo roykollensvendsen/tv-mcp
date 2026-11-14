@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hands-off TV never has an app opened or closed"
+file = "src/tv_mcp/service.py"
+find = '        if tv\.hands_off or not tv\.address:'
+replace = 'if False:'

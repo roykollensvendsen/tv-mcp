@@ -1,0 +1,5 @@
+[[rule]]
+name = "an expired YouTube pairing is made again from the screen"
+file = "src/tv_mcp/drivers/youtube.py"
+find = 'if not paired and not await api\.pair_with_screen_id\(screen_id\):'
+replace = 'if not paired:'
