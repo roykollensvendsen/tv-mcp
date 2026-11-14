@@ -67,6 +67,10 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A passing test's temporary files are deleted at once, and only the latest run's
+# failures are kept to read: a day of runs otherwise filled the machine's /tmp.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 
 [tool.coverage.run]
 branch = true

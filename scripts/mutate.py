@@ -22,14 +22,23 @@ what requires that test to exist in the first place.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
+import hashlib
 import json
 import os
 import pathlib
 import re
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import tomllib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -42,6 +51,12 @@ ROWS = ROOT / "scripts/mutations"
 #: not run when the process is killed, so without this a hard stop leaves a
 #: source file switched off and the next person wondering why the suite is red.
 RECOVERY = ROOT / "scripts/.mutate-recovery.json"
+#: Where each suite run keeps its temporary files, one folder per run, removed when it
+#: ends. Outside the checkout, where a test making a git repository of its own would
+#: find this one instead; named after the checkout, so two never sweep each other's.
+MUTATE_TMP = pathlib.Path(tempfile.gettempdir()) / (
+    "tv-mcp-mutate-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8]
+)
 
 
 def test_name_for(rule: str) -> str:
@@ -117,6 +132,44 @@ def line_of(text: str, pattern: str, occurrence: int) -> int:
     raise SystemExit(msg)
 
 
+def _open_up(place: pathlib.Path) -> None:
+    """Give the owner back every right on one folder or file, adding to the rights it has.
+
+    A link is left alone: changing its rights would change whatever it points to,
+    which may be outside the run's folder.
+    """
+    if place.is_symlink():
+        return
+    with contextlib.suppress(OSError):
+        place.chmod(place.stat().st_mode | stat.S_IRWXU)
+
+
+def _writable_again(func: Callable[[str], object], path: str, _exc: object) -> None:
+    """Let a refused delete through: open up the path and its folder, then try again."""
+    for place in (pathlib.Path(path).parent, pathlib.Path(path)):
+        _open_up(place)
+    func(path)
+
+
+def _remove(folder: pathlib.Path) -> None:
+    """Delete a run's folder, even where a test took away the rights to read or delete it."""
+    if not folder.exists():
+        return
+    # A folder a test shut (mode 0) cannot even be listed, so open every folder first;
+    # the handler then covers anything that still refuses.
+    for place, folders, _ in os.walk(folder):
+        for name in folders:
+            _open_up(pathlib.Path(place) / name)
+    shutil.rmtree(folder, onexc=_writable_again)
+
+
+def sweep() -> None:
+    """Remove what an earlier run, killed before it could clean up, left behind."""
+    # RULE: a killed run's temporary files are swept at the next start
+    for left in MUTATE_TMP.iterdir() if MUTATE_TMP.is_dir() else []:
+        _remove(left)
+
+
 def repair() -> None:
     """Put back a file an earlier run was killed in the middle of mutating."""
     if not RECOVERY.is_file():
@@ -156,14 +209,30 @@ def run_suite() -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    r = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--tb=no", "--color=no", "-p", "no:cacheprovider"],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-        check=False,
-        env=env,
-    )
+    MUTATE_TMP.mkdir(parents=True, exist_ok=True)
+    temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
+    try:
+        r = subprocess.run(  # noqa: S603 - this interpreter, pytest, and a folder this script made
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "--tb=no",
+                "--color=no",
+                "-p",
+                "no:cacheprovider",
+                f"--basetemp={temporary}",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
+            env=env,
+        )
+    finally:
+        # RULE: a suite run leaves no temporary files behind
+        _remove(temporary)
     # --color=no covers the usual run; stripping covers a configuration that
     # turns colour back on, which would otherwise make every kill unattributable.
     # RULE: a coloured failure line is still attributed
@@ -180,6 +249,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repair()
+    sweep()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
     rules = all_rows()
