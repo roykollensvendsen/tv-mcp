@@ -254,7 +254,7 @@ def publish(to: pathlib.Path | None, results: list[Result], survived: list[str],
 def figures(results: list[Result]) -> dict[str, Any]:
     """The run as numbers: per rule, its name, file, tests gone red and whether its own was one."""
     rules = [
-        {"name": name, "file": file, "killed": count, "own_test_red": own_red}
+        {"name": name, "file": file, "tests_red": count, "own_test_red": own_red}
         for name, file, count, _, own_red in results
     ]
     return {"killed": sum(rule["own_test_red"] for rule in rules), "total": len(rules), "rules": rules}
