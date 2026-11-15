@@ -82,7 +82,9 @@ def test_rules_marked_with_no_rows_fail_the_run(monkeypatch, tmp_path, capsys):
     (tmp_path / "src/code.py").write_text("x = 1  # RULE: a rule with no row\n")
     monkeypatch.setattr("sys.argv", ["mutate.py"])
     assert runner.main() == 1
-    assert "1 rule is marked" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert "1 rule is marked, so this run fails" in said
+    assert "git checkout -- mutations" in said
 
 
 @pytest.fixture
