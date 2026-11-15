@@ -1,5 +1,5 @@
 [[rule]]
 name = "a step that has just ended does not hide the stop"
 file = "scripts/ratchet.py"
-find = '^            with contextlib\.suppress\(ProcessLookupError\):$'
+find = '^                if step\.poll\(\) is None:$'
 replace = 'if True:'

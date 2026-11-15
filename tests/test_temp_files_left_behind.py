@@ -381,6 +381,10 @@ def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
     assert (tmp_path / "cleaned").exists(), "the ratchet ended before its step had cleaned up"
 
 
+class _Stopped(Exception):  # noqa: N818 - a stand-in for Ctrl-C that cannot stop the test run
+    """What breaks the step's wait here: KeyboardInterrupt itself would end pytest's run."""
+
+
 class _EndedJustAsStopped:
     """A step whose wait is broken by a stop, and whose process group is already gone."""
 
@@ -392,8 +396,11 @@ class _EndedJustAsStopped:
     def wait(self):
         self.waits += 1
         if self.waits == 1:
-            raise KeyboardInterrupt
+            raise _Stopped
         return 0
+
+    def poll(self):
+        return 0 if self.waits else None  # it ended as the stop broke the first wait
 
 
 def test_a_step_that_has_just_ended_does_not_hide_the_stop(tmp_path, monkeypatch):
@@ -407,6 +414,32 @@ def test_a_step_that_has_just_ended_does_not_hide_the_stop(tmp_path, monkeypatch
         raise ProcessLookupError
 
     monkeypatch.setattr(ratchet.os, "killpg", gone)
-    with pytest.raises(KeyboardInterrupt):
+    with pytest.raises(_Stopped):
         ratchet._run("uv", "run", "python", "scripts/mutate.py")  # noqa: SLF001 - the step runner itself
     assert steps[0].waits == 2, "the step was not waited for after the stop"
+
+
+class _StillRunning(_EndedJustAsStopped):
+    """A step started with no session of its own: alive, with no process group to stop."""
+
+    def poll(self):
+        return None
+
+
+def test_a_step_still_running_is_never_left_unstopped(tmp_path, monkeypatch):
+    ratchet = _load("ratchet_running", ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
+    monkeypatch.setattr(ratchet.subprocess, "Popen", lambda *a, **k: _StillRunning())
+
+    def gone(_pid, _signum):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(ratchet.os, "killpg", gone)
+    with pytest.raises(ProcessLookupError):
+        ratchet._run("uv", "run", "python", "scripts/mutate.py")  # noqa: SLF001 - the step runner itself
+
+
+def test_a_step_runs_in_a_session_of_its_own(tmp_path, monkeypatch):
+    """So Ctrl-C in a terminal reaches it once, through the ratchet, and the ratchet can stop all of it."""
+    ratchet = _load("ratchet_session", ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
+    done = ratchet._run(sys.executable, "-c", "import os; print(os.getsid(0) == os.getpid())")  # noqa: SLF001
+    assert done.stdout.strip() == "True"

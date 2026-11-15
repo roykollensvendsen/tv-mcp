@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import contextlib
 import json
 import os
 import re
@@ -318,17 +317,28 @@ def _run(
     """
     with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
         step = subprocess.Popen(  # noqa: S603 - commands this script names
-            command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=True
+            # RULE: a step runs in a session of its own
+            command,
+            cwd=cwd,
+            env=env,
+            stdout=out,
+            stderr=err,
+            text=True,
+            start_new_session=True,
         )
         try:
             returncode = step.wait()
         except BaseException:
             # RULE: a stopped measurement stops its step and waits for it
-            # A step that ended just as the stop came has no group left; the stop still
-            # goes on, and the wait below still reaps it.
-            # RULE: a step that has just ended does not hide the stop
-            with contextlib.suppress(ProcessLookupError):
+            try:
                 os.killpg(step.pid, signal.SIGINT)
+            except ProcessLookupError:
+                # A step that ended just as the stop came has no group left: the stop goes
+                # on, and the wait below reaps it. One still running with no group of its
+                # own would never hear the stop, so that is never passed over.
+                # RULE: a step that has just ended does not hide the stop
+                if step.poll() is None:
+                    raise
             sys.stderr.write(
                 f"Stopping: waiting for {command[0]} to clean up. If it hangs, end it from"
                 f" another terminal with: kill -9 -- -{step.pid}\n"
