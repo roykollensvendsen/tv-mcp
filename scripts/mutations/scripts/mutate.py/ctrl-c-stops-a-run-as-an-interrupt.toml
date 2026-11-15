@@ -1,0 +1,5 @@
+[[rule]]
+name = "ctrl-c stops a run as an interrupt"
+file = "scripts/mutate.py"
+find = '^            raise KeyboardInterrupt$'
+replace = 'pass'

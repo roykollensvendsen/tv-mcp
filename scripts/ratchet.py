@@ -297,7 +297,35 @@ def _run(
     cwd: Path = ROOT,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)  # noqa: S603
+    """Run one step of the measurement and give back what it printed.
+
+    The step runs in a session of its own, so a Ctrl-C in the terminal reaches it once,
+    through this script, rather than twice. Told to stop, this script passes SIGINT on
+    and waits for the step to put things back, with no time limit: runs never have one.
+    A step that hangs then can be ended from another terminal with
+    `kill -9 -- -<the step's pid>`, which this script prints.
+
+    What the step prints goes to temporary files rather than pipes: a step that prints a
+    lot can then never stall on a full pipe while this script is waiting for it.
+    """
+    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        step = subprocess.Popen(  # noqa: S603 - commands this script names
+            command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=True
+        )
+        try:
+            returncode = step.wait()
+        except BaseException:
+            # RULE: a stopped measurement stops its step and waits for it
+            step.send_signal(signal.SIGINT)
+            sys.stderr.write(
+                f"Stopping: waiting for {command[0]} to clean up. If it hangs, end it from"
+                f" another terminal with: kill -9 -- -{step.pid}\n"
+            )
+            step.wait()
+            raise
+        out.seek(0)
+        err.seek(0)
+        return subprocess.CompletedProcess(command, returncode, out.read(), err.read())
 
 
 def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -473,14 +501,18 @@ def stop_cleanly() -> None:
     each end the run here through `finally` instead. The first signal ignores the
     rest, so a second one cannot land inside the cleanup and cut it short.
 
-    Ctrl-C therefore ends the run as SystemExit(130), not KeyboardInterrupt, and
-    every signal ends it with 128 plus the signal's number, as a shell would report.
+    Ctrl-C still ends the run as KeyboardInterrupt, so it reads as Ctrl-C to whatever
+    ran the script; SIGTERM and SIGHUP end it with 128 plus the signal's number, as a
+    shell would report.
     """
 
     def stop(signum: int, _frame: object) -> None:
         for each in STOPS:
             # RULE: a second signal cannot cut the cleanup short of a measurement
             signal.signal(each, signal.SIG_IGN)
+        if signum == signal.SIGINT:
+            # RULE: ctrl-c stops a measurement as an interrupt
+            raise KeyboardInterrupt
         raise SystemExit(128 + signum)
 
     for each in STOPS:

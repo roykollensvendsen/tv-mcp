@@ -91,6 +91,16 @@ mutate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mutate)
 mutate.ROOT, mutate.ROWS = project, project / "scripts/mutations"
 mutate.RECOVERY = project / "scripts/.mutate-recovery.json"
+if len(sys.argv) > 3:  # a slow cleanup, so a second signal can be sent in the middle of it
+    import time
+    restore, cleaning = mutate.restore, pathlib.Path(sys.argv[3])
+
+    def slow_restore(*args):
+        cleaning.write_text("")
+        time.sleep(2)
+        return restore(*args)
+
+    mutate.restore = slow_restore
 sys.argv = ["mutate.py"]
 sys.exit(mutate.main())
 """
@@ -106,8 +116,13 @@ def _git(project, *command):
     ).stdout
 
 
-def _stopped_mid_mutation(tmp_path):
-    """A project kept in git, and a mutation run of it told to stop (SIGTERM) mid-suite."""
+def _stopped_mid_mutation(tmp_path, *, then_terminated=False):
+    """A project kept in git, and a mutation run of it told to stop mid-suite.
+
+    Stopped with SIGTERM; or, as GitHub cancels a job, with SIGINT and then, once the
+    cleanup has begun, SIGTERM.
+    """
+    cleaning = tmp_path / "cleaning"
     temp = tmp_path / "tmp"
     temp.mkdir()
     project = _project(tmp_path, WAITS)
@@ -116,7 +131,13 @@ def _stopped_mid_mutation(tmp_path):
     _git(project, "commit", "-q", "-m", "the project as it is")
     (tmp_path / "driver.py").write_text(DRIVER)
     run = subprocess.Popen(
-        [sys.executable, str(tmp_path / "driver.py"), str(ROOT / "scripts/mutate.py"), str(project)],
+        [
+            sys.executable,
+            str(tmp_path / "driver.py"),
+            str(ROOT / "scripts/mutate.py"),
+            str(project),
+            *([str(cleaning)] if then_terminated else []),
+        ],
         env={**os.environ, "TMPDIR": str(temp)},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -128,6 +149,11 @@ def _stopped_mid_mutation(tmp_path):
         assert list(temp.rglob("run-*")), "the run never started its suite"
         time.sleep(0.5)  # into the suite, so the mutated file is standing
         assert (project / "src/rule.py").read_text() != GUARDED, "the rule was not switched off yet"
+        if then_terminated:
+            run.send_signal(signal.SIGINT)
+            while not cleaning.exists() and run.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert cleaning.exists(), "the cleanup never began"
         run.send_signal(signal.SIGTERM)
         assert run.wait(timeout=30) != 0
     finally:
@@ -140,6 +166,13 @@ def test_a_mutation_run_told_to_stop_puts_the_source_back_as_git_has_it(tmp_path
     _, project = _stopped_mid_mutation(tmp_path)
     assert _git(project, "status", "--porcelain") == ""
     assert (project / "src/rule.py").read_text() == GUARDED
+
+
+def test_a_second_signal_cannot_cut_the_cleanup_short(tmp_path):
+    """SIGINT, then SIGTERM in the middle of the cleanup: the second must not cut it short."""
+    temp, project = _stopped_mid_mutation(tmp_path, then_terminated=True)
+    assert _git(project, "status", "--porcelain") == ""
+    assert list(temp.iterdir()) == []
 
 
 def test_a_mutation_run_told_to_stop_leaves_nothing_behind(tmp_path):
@@ -248,9 +281,28 @@ def test_a_stopped_run_puts_the_tree_back(tmp_path, monkeypatch):
     _stops_on_every_signal(ROOT / "scripts/mutate.py", monkeypatch, tmp_path)
 
 
-def test_a_second_signal_cannot_cut_the_cleanup_short(tmp_path, monkeypatch):
+def test_the_first_signal_ignores_the_rest(tmp_path, monkeypatch):
     """GitHub sends SIGINT and then SIGTERM; the second must not land inside the first's cleanup."""
     _ignores_a_second_signal(ROOT / "scripts/mutate.py", monkeypatch, tmp_path)
+
+
+def _interrupted_as_ctrl_c(script, monkeypatch, tmp_path):
+    module = _load(script.stem + "_ctrl_c", script, monkeypatch, tmp_path)
+    with _handlers_kept():
+        for each in STOPS:
+            signal.signal(each, signal.SIG_DFL)
+        module.stop_cleanly()
+        with pytest.raises(KeyboardInterrupt):
+            signal.getsignal(signal.SIGINT)(signal.SIGINT, None)
+
+
+def test_ctrl_c_stops_a_run_as_an_interrupt(tmp_path, monkeypatch):
+    """Ctrl-C still reads as Ctrl-C to whatever runs the script: an interrupt, not an exit."""
+    _interrupted_as_ctrl_c(ROOT / "scripts/mutate.py", monkeypatch, tmp_path)
+
+
+def test_ctrl_c_stops_a_measurement_as_an_interrupt(tmp_path, monkeypatch):
+    _interrupted_as_ctrl_c(ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
 
 
 def test_a_stopped_measurement_removes_its_copy(tmp_path, monkeypatch):
@@ -259,3 +311,59 @@ def test_a_stopped_measurement_removes_its_copy(tmp_path, monkeypatch):
 
 def test_a_second_signal_cannot_cut_the_cleanup_short_of_a_measurement(tmp_path, monkeypatch):
     _ignores_a_second_signal(ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
+
+
+STEP = """
+import pathlib, signal, sys, time
+here = pathlib.Path(sys.argv[1])
+
+def cleanup(_signum, _frame):
+    (here / "got-int").write_text("")
+    time.sleep(1)  # a step that takes a moment to put things back
+    (here / "cleaned").write_text("")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, cleanup)
+(here / "started").write_text("")
+deadline = time.monotonic() + 10  # a step never told to stop ends by itself
+while time.monotonic() < deadline:
+    time.sleep(0.05)
+"""
+
+MEASURING = """
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("ratchet", sys.argv[1])
+ratchet = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ratchet)
+ratchet.stop_cleanly()
+ratchet._run(sys.executable, sys.argv[2], sys.argv[3])
+"""
+
+
+def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
+    """Ctrl-C on the ratchet reaches its step once, through the ratchet, which then waits."""
+    (tmp_path / "step.py").write_text(STEP)
+    (tmp_path / "measuring.py").write_text(MEASURING)
+    run = subprocess.Popen(
+        [
+            sys.executable,
+            str(tmp_path / "measuring.py"),
+            str(ROOT / "scripts/ratchet.py"),
+            str(tmp_path / "step.py"),
+            str(tmp_path),
+        ],
+        env={**os.environ, "TMPDIR": str(tmp_path)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not (tmp_path / "started").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert (tmp_path / "started").exists(), "the step never started"
+        run.send_signal(signal.SIGINT)
+        assert run.wait(timeout=30) != 0
+    finally:
+        run.kill()
+    assert (tmp_path / "got-int").exists(), "the ratchet never passed the stop on to its step"
+    assert (tmp_path / "cleaned").exists(), "the ratchet ended before its step had cleaned up"
