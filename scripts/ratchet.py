@@ -300,8 +300,11 @@ def _run(
     """Run one step of the measurement and give back what it printed.
 
     The step runs in a session of its own, so a Ctrl-C in the terminal reaches it once,
-    through this script, rather than twice. Told to stop, this script passes SIGINT on
-    and waits for the step to put things back, with no time limit: runs never have one.
+    through this script, rather than twice. Told to stop, this script sends SIGINT to the
+    step's whole process group, as a terminal's Ctrl-C would: the step is usually
+    `uv run ...`, and the program under uv must get the stop whether uv passes it on or
+    not. It then waits for the step to put things back, with no time limit: runs never
+    have one.
     A step that hangs then can be ended from another terminal with
     `kill -9 -- -<the step's pid>`, which this script prints.
 
@@ -316,7 +319,7 @@ def _run(
             returncode = step.wait()
         except BaseException:
             # RULE: a stopped measurement stops its step and waits for it
-            step.send_signal(signal.SIGINT)
+            os.killpg(step.pid, signal.SIGINT)
             sys.stderr.write(
                 f"Stopping: waiting for {command[0]} to clean up. If it hangs, end it from"
                 f" another terminal with: kill -9 -- -{step.pid}\n"
