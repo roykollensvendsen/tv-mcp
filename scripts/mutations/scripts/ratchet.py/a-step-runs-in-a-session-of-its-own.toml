@@ -1,5 +1,5 @@
 [[rule]]
 name = "a step runs in a session of its own"
 file = "scripts/ratchet.py"
-find = 'stderr=err, text=True, start_new_session=True$'
-replace = 'command, cwd=cwd, env=env, stdout=out, stderr=err, text=True, start_new_session=False'
+find = '^            start_new_session=True,$'
+replace = 'start_new_session=False,'
