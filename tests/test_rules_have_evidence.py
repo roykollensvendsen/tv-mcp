@@ -37,7 +37,10 @@ def marked_rules() -> set[str]:
     found = set()
     # The checks this project added count too; the scripts the start-repo
     # skill ships carry rules that skill proves.
-    scripts = [ROOT / "scripts" / n for n in ("no_session_links.py", "private_data_scan.py", "ratchet.py")]
+    scripts = [
+        ROOT / "scripts" / n
+        for n in ("mutate.py", "no_session_links.py", "private_data_scan.py", "ratchet.py")
+    ]
     sources = [*(ROOT / "src").rglob("*.py"), *scripts]
     for source in sorted(sources):
         for line in source.read_text().splitlines():
@@ -68,6 +71,7 @@ def defined_test_names() -> set[str]:
 def test_every_rule_in_the_source_has_a_row_in_the_mutation_table():
     """Without this the evidence falls behind the code and nobody sees it happen."""
     marked, rowed = marked_rules(), rowed_rules()
+    assert marked, "no rule is marked anywhere, so this would check nothing; is MARKER still right?"
     assert marked - rowed == set(), f"marked in the source and never switched off: {marked - rowed}"
     assert rowed - marked == set(), f"a row for a rule no longer in the source: {rowed - marked}"
 
