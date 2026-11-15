@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped measurement removes its copy"
+file = "scripts/ratchet.py"
+find = '^        signal\.signal\(each, stop\)$'
+replace = 'pass'

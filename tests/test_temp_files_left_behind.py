@@ -8,6 +8,7 @@ nothing is left in it: not after a finished run, and not after a run that was
 told to stop.
 """
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -17,6 +18,8 @@ import subprocess
 import sys
 import tempfile
 import time
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -73,6 +76,8 @@ def test_a_mutation_run_leaves_the_temporary_folder_empty(tmp_path, monkeypatch)
 
 WAITS = """
 import time
+
+import pytest
 
 def test_a_guard_holds():
     time.sleep(60)
@@ -199,3 +204,58 @@ def test_a_test_that_starts_pytest_gives_it_a_temporary_folder_of_its_own():
     """A pytest started by a test would otherwise keep its folders in the machine's /tmp."""
     for test in ("test_real_recovery_file_is_guarded.py",):
         assert "--basetemp" in (ROOT / "tests" / test).read_text(), test
+
+
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+@contextlib.contextmanager
+def _handlers_kept():
+    """Give the test run its own signal handlers back afterwards."""
+    before = {each: signal.getsignal(each) for each in STOPS}
+    try:
+        yield
+    finally:
+        for each, handler in before.items():
+            signal.signal(each, handler)
+
+
+def _stops_on_every_signal(script, monkeypatch, tmp_path):
+    module = _load(script.stem + "_signals", script, monkeypatch, tmp_path)
+    with _handlers_kept():
+        for each in STOPS:  # none of its own beforehand, so only stop_cleanly can install one
+            signal.signal(each, signal.SIG_DFL)
+        module.stop_cleanly()
+        handlers = {each: signal.getsignal(each) for each in STOPS}
+    assert all(callable(handlers[each]) for each in STOPS), handlers
+
+
+def _ignores_a_second_signal(script, monkeypatch, tmp_path):
+    module = _load(script.stem + "_twice", script, monkeypatch, tmp_path)
+    with _handlers_kept():
+        for each in STOPS:  # none of its own beforehand, so only stop_cleanly can install one
+            signal.signal(each, signal.SIG_DFL)
+        module.stop_cleanly()
+        with pytest.raises(SystemExit) as ended:
+            # SIGTERM: a run with no handler of its own for SIGINT would end the test run here.
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        assert ended.value.code == 128 + signal.SIGTERM
+        assert all(signal.getsignal(each) == signal.SIG_IGN for each in STOPS)
+
+
+def test_a_stopped_run_puts_the_tree_back(tmp_path, monkeypatch):
+    """Not only SIGTERM: a closed terminal sends SIGHUP, and Ctrl-C or GitHub sends SIGINT."""
+    _stops_on_every_signal(ROOT / "scripts/mutate.py", monkeypatch, tmp_path)
+
+
+def test_a_second_signal_cannot_cut_the_cleanup_short(tmp_path, monkeypatch):
+    """GitHub sends SIGINT and then SIGTERM; the second must not land inside the first's cleanup."""
+    _ignores_a_second_signal(ROOT / "scripts/mutate.py", monkeypatch, tmp_path)
+
+
+def test_a_stopped_measurement_removes_its_copy(tmp_path, monkeypatch):
+    _stops_on_every_signal(ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
+
+
+def test_a_second_signal_cannot_cut_the_cleanup_short_of_a_measurement(tmp_path, monkeypatch):
+    _ignores_a_second_signal(ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second signal cannot cut the cleanup short"
+file = "scripts/mutate.py"
+find = '^            signal\.signal\(each, signal\.SIG_IGN\)$'
+replace = 'pass'

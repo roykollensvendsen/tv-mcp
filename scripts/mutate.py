@@ -198,17 +198,27 @@ def sweep() -> None:
         _remove(left)
 
 
-def stop_cleanly() -> None:
-    """Let a run told to stop (SIGTERM) put the tree back and remove its files first.
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
-    By default the signal ends Python at once, with no `finally` run: a mutated file
-    stays switched off and the suite's temporary files stay behind.
+
+def stop_cleanly() -> None:
+    """Let a run told to stop put the tree back and remove its files first.
+
+    By default a signal ends Python at once, with no `finally` run. Ctrl-C (SIGINT), a
+    closed terminal (SIGHUP) and `kill` or GitHub's cancel (SIGTERM, after a SIGINT)
+    each end the run here through `finally` instead. The first signal ignores the
+    rest, so a second one cannot land inside the cleanup and cut it short.
     """
 
     def stop(signum: int, _frame: object) -> None:
+        for each in STOPS:
+            # RULE: a second signal cannot cut the cleanup short
+            signal.signal(each, signal.SIG_IGN)
         raise SystemExit(128 + signum)
 
-    signal.signal(signal.SIGTERM, stop)
+    for each in STOPS:
+        # RULE: a stopped run puts the tree back
+        signal.signal(each, stop)
 
 
 def _tidy() -> None:
