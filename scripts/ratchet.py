@@ -33,6 +33,7 @@ import ast
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -301,25 +302,36 @@ def _run(
 
 def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
     """Every measure, from the tree as it is."""
+    # Whatever the suite and the mutation run leave in their temporary folder goes
+    # with this one, so a measurement leaves nothing in the machine's /tmp.
     with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "TMPDIR": tmp}
         report = Path(tmp) / "coverage.json"
         started = time.monotonic()
         suite = _run(
-            "uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}"
+            "uv",
+            "run",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--cov",
+            f"--cov-report=json:{report}",
+            env=env,
         )
         seconds = round(time.monotonic() - started, 1)
         if suite.returncode:
             raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
         coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
+        if skip_mutation and recorded:
+            mutation = recorded["mutation"]
+        else:
+            mutate = _run("uv", "run", "python", "scripts/mutate.py", env=env)
+            mutation = mutation_tally(mutate.stdout, mutate.returncode)
     passed = re.search(r"(\d+) passed", suite.stdout)
     lint = _run("uv", "run", "ruff", "check", ".", "--output-format", "json")
     types = _run("uv", "run", "mypy", "src")
     type_errors = re.search(r"Found (\d+) errors?", types.stdout)
-    if skip_mutation and recorded:
-        mutation = recorded["mutation"]
-    else:
-        mutate = _run("uv", "run", "python", "scripts/mutate.py")
-        mutation = mutation_tally(mutate.stdout, mutate.returncode)
     return {
         "coverage": coverage,
         "mutation": mutation,
@@ -437,7 +449,9 @@ def measure_at(ref: str) -> dict[str, Any]:
             if synced.returncode:
                 msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
                 raise SystemExit(msg)
-            env = {**os.environ, "RATCHET_ROOT": str(copy)}
+            # The base's own runs keep their temporary files in here too, and go with it.
+            (scratch := Path(tmp) / "tmp").mkdir()
+            env = {**os.environ, "RATCHET_ROOT": str(copy), "TMPDIR": str(scratch)}
             here = str(Path(__file__).resolve())
             measured = _run("uv", "run", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
             if measured.returncode:
@@ -457,6 +471,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
+    # Told to stop, end through `finally`, so the base's copy and temporary folder go too.
+    signal.signal(signal.SIGTERM, lambda signum, _frame: sys.exit(128 + signum))
     if args.action == "measure":
         now = measure()
         if args.out:

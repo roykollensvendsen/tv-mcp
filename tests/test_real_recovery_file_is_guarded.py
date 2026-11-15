@@ -30,7 +30,19 @@ def _run(tmp_path, test, *, there_before):
     if there_before:
         (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}')
     return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), "tests"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--rootdir",
+            str(tmp_path),
+            "tests",
+            "--basetemp",
+            str(tmp_path / "basetemp"),
+        ],
         cwd=tmp_path,
         capture_output=True,
         text=True,
