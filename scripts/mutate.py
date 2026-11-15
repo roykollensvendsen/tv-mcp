@@ -209,14 +209,18 @@ def stop_cleanly() -> None:
     each end the run here through `finally` instead. The first signal ignores the
     rest, so a second one cannot land inside the cleanup and cut it short.
 
-    Ctrl-C therefore ends the run as SystemExit(130), not KeyboardInterrupt, and
-    every signal ends it with 128 plus the signal's number, as a shell would report.
+    Ctrl-C still ends the run as KeyboardInterrupt, so it reads as Ctrl-C to whatever
+    ran the script; SIGTERM and SIGHUP end it with 128 plus the signal's number, as a
+    shell would report.
     """
 
     def stop(signum: int, _frame: object) -> None:
         for each in STOPS:
             # RULE: a second signal cannot cut the cleanup short
             signal.signal(each, signal.SIG_IGN)
+        if signum == signal.SIGINT:
+            # RULE: ctrl-c stops a run as an interrupt
+            raise KeyboardInterrupt
         raise SystemExit(128 + signum)
 
     for each in STOPS:

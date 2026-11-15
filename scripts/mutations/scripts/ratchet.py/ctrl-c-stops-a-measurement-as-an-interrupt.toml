@@ -1,0 +1,5 @@
+[[rule]]
+name = "ctrl-c stops a measurement as an interrupt"
+file = "scripts/ratchet.py"
+find = '^            raise KeyboardInterrupt$'
+replace = 'pass'
