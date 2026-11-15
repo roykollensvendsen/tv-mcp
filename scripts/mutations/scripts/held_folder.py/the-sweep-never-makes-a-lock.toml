@@ -1,0 +1,5 @@
+[[rule]]
+name = "the sweep never makes a lock"
+file = "scripts/held_folder.py"
+find = 'os\.open\(path / LOCK, os\.O_RDONLY \| os\.O_NOFOLLOW\)'
+replace = 'os.open(path / LOCK, os.O_RDONLY | os.O_NOFOLLOW | os.O_CREAT, 0o600)'

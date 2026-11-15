@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder with no lock is left alone for an hour"
+file = "scripts/held_folder.py"
+find = 'time\.time\(\) - found\.st_mtime > GRACE_SECONDS'
+replace = 'True'

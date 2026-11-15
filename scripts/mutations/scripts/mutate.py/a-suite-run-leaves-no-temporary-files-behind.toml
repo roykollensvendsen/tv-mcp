@@ -1,5 +1,5 @@
 [[rule]]
 name = "a suite run leaves no temporary files behind"
 file = "scripts/mutate.py"
-find = '^        _remove\(temporary\)$'
+find = '^        held\.remove\(\)$'
 replace = 'pass'

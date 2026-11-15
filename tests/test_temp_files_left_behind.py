@@ -229,6 +229,7 @@ def test_measuring_the_tree_leaves_nothing_in_the_temporary_folder(tmp_path, mon
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
 
     monkeypatch.setattr(ratchet, "_run", run)
+    monkeypatch.setattr(ratchet, "same_checkout", lambda _ask: None)  # its steps are stand-ins here
     assert ratchet.measure()["tests"] == 3
     assert list(temp.iterdir()) == []
 
@@ -380,3 +381,34 @@ def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
         run.kill()
     assert (tmp_path / "got-int").exists(), "the ratchet never passed the stop on to its step"
     assert (tmp_path / "cleaned").exists(), "the ratchet ended before its step had cleaned up"
+
+
+class _EndedJustAsStopped:
+    """A step whose wait is broken by a stop, and whose process group is already gone."""
+
+    pid = 4_000_000
+
+    def __init__(self, *_args, **_kwargs):
+        self.waits = 0
+
+    def wait(self):
+        self.waits += 1
+        if self.waits == 1:
+            raise KeyboardInterrupt
+        return 0
+
+
+def test_a_step_that_has_just_ended_does_not_hide_the_stop(tmp_path, monkeypatch):
+    ratchet = _load("ratchet_ended", ROOT / "scripts/ratchet.py", monkeypatch, tmp_path)
+    steps = []
+    monkeypatch.setattr(
+        ratchet.subprocess, "Popen", lambda *a, **k: steps.append(_EndedJustAsStopped()) or steps[-1]
+    )
+
+    def gone(_pid, _signum):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(ratchet.os, "killpg", gone)
+    with pytest.raises(KeyboardInterrupt):
+        ratchet._run("uv", "run", "python", "scripts/mutate.py")  # noqa: SLF001 - the step runner itself
+    assert steps[0].waits == 2, "the step was not waited for after the stop"

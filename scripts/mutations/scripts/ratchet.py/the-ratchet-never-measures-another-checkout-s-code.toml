@@ -1,0 +1,5 @@
+[[rule]]
+name = "the ratchet never measures another checkout's code"
+file = "scripts/ratchet.py"
+find = '^        if own not in found\.parents:$'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the rule check never measures another checkout's code"
+file = "scripts/mutate.py"
+find = '^        if own not in found\.parents:$'
+replace = 'if False:'

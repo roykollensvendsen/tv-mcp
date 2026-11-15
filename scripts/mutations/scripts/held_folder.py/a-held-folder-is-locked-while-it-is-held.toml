@@ -1,0 +1,5 @@
+[[rule]]
+name = "a held folder is locked while it is held"
+file = "scripts/held_folder.py"
+find = '^        fcntl\.flock\(self\._lock, fcntl\.LOCK_EX\)$'
+replace = 'pass'

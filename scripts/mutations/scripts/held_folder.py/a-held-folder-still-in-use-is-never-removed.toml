@@ -1,0 +1,5 @@
+[[rule]]
+name = "a held folder still in use is never removed"
+file = "scripts/held_folder.py"
+find = '^        fcntl\.flock\(lock, fcntl\.LOCK_EX \| fcntl\.LOCK_NB\)$'
+replace = 'pass'

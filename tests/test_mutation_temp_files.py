@@ -9,6 +9,7 @@ whatever a killed run left is swept away at the next start.
 """
 
 import importlib.util
+import os
 import pathlib
 import sys
 
@@ -65,14 +66,39 @@ def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, mon
     assert (outside.stat().st_mode & 0o777, (outside / "kept.txt").exists()) == (0o755, True)
 
 
+def _held(mutate):
+    """A run's folder in the rule check's own temporary folder, locked as a running one is."""
+    return mutate.held_folder.HeldFolder("run-", mutate.held_folder.ours(mutate.MUTATE_TMP))
+
+
 def test_a_killed_run_s_temporary_files_are_swept_at_the_next_start(tmp_path, monkeypatch):
     mutate = _mutate(tmp_path, monkeypatch)
-    left = mutate.MUTATE_TMP / "run-left-by-a-killed-run"
-    (left / "shut").mkdir(parents=True)
-    (left / "shut" / "inside.txt").write_text("x")
-    (left / "shut").chmod(0)
+    held = _held(mutate)
+    (held.path / "shut").mkdir()
+    (held.path / "shut" / "inside.txt").write_text("x")
+    (held.path / "shut").chmod(0)
+    os.close(held._lock)  # noqa: SLF001 - killed: the lock goes with the process, the folder stays
     mutate.sweep()
-    assert not left.exists()
+    assert not held.path.exists()
+
+
+def test_a_sweep_never_removes_the_folder_of_a_run_still_going(tmp_path, monkeypatch):
+    """Two rule checks of one checkout, or one started while another runs, used to do this."""
+    mutate = _mutate(tmp_path, monkeypatch)
+    held = _held(mutate)
+    try:
+        mutate.sweep()
+        assert held.path.is_dir()
+    finally:
+        held.remove()
+
+
+def test_a_rule_check_stops_at_a_shared_folder_that_is_not_its_own(tmp_path, monkeypatch):
+    mutate = _mutate(tmp_path, monkeypatch)
+    mutate.MUTATE_TMP.mkdir(mode=0o700)
+    mutate.MUTATE_TMP.chmod(0o777)
+    with pytest.raises(SystemExit, match=str(mutate.MUTATE_TMP)):
+        mutate.sweep()
 
 
 def test_the_temporary_files_live_outside_the_checkout():

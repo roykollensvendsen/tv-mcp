@@ -27,6 +27,10 @@ def _run(tmp_path, test, *, there_before):
     (tmp_path / "scripts").mkdir()
     (tmp_path / "tests/conftest.py").write_text((ROOT / "tests/conftest.py").read_text(encoding="utf-8"))
     (tmp_path / "tests/test_scratch.py").write_text(test)
+    # The conftest keeps the run's temporary files in a held folder, made by its neighbour.
+    (tmp_path / "scripts/held_folder.py").write_text(
+        (ROOT / "scripts/held_folder.py").read_text(encoding="utf-8")
+    )
     if there_before:
         (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}')
     return subprocess.run(
