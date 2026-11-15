@@ -196,13 +196,11 @@ def test_measuring_the_base_leaves_nothing_in_the_temporary_folder(tmp_path, mon
     ratchet = _ratchet(monkeypatch, temp)
 
     def run(*command, cwd=None, env=None):
-        if command[:3] == ("git", "worktree", "add"):
-            pathlib.Path(command[-2]).mkdir()
         if "measure" in command:
             _leaves_a_file(env)
             out = pathlib.Path(command[command.index("--out") + 1])
             out.write_text(json.dumps({"tests": 1}))
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="0123abc\n", stderr="")
 
     monkeypatch.setattr(ratchet, "_run", run)
     assert ratchet.measure_at("origin/main") == {"tests": 1}

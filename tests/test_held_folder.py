@@ -134,7 +134,7 @@ def test_a_killed_measurement_s_copy_is_swept_at_the_next_start(tmp_path, monkey
     (left / "base").mkdir()
     ratchet.sweep()
     assert not left.exists()
-    assert ran == [("git", "worktree", "prune")]
+    assert ran == []  # no git command: the copy is a repository of its own, with no record here
 
 
 def test_a_measurement_still_going_is_never_swept(tmp_path, monkeypatch):

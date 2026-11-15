@@ -500,34 +500,60 @@ def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -
     return measure_base()
 
 
+#: Fetching one commit by its sha, whether or not a branch points at it.
+ANY_COMMIT = ("git", "-c", "protocol.version=2", "-c", "uploadpack.allowAnySHA1InWant=true")
+
+
+def copy_of(ref: str, copy: Path) -> None:
+    """Check `ref` out into `copy`, a repository of its own holding that one commit and no ref.
+
+    A worktree would share every branch of this clone, and git keeps a record of it that a
+    killed run leaves behind; pruning those records would take other sessions' with them.
+    `ref` may be any commit this clone has, a branch tip or not: CI's base is main's commit
+    when the pull request began, which main may have moved past. The bridge's form (#304).
+    """
+    sha = _run("git", "rev-parse", "--verify", f"{ref}^{{commit}}", cwd=ROOT)
+    if sha.returncode:
+        msg = f"Cannot find {ref} to measure it:\n{sha.stderr}"
+        raise SystemExit(msg)
+    copy.mkdir(parents=True)
+    # RULE: the base is measured where no other branch can be seen
+    steps = (
+        ("git", "init", "-q"),
+        # RULE: the base may be a commit no branch points at
+        (*ANY_COMMIT, "fetch", "-q", "--depth", "1", str(ROOT), sha.stdout.strip()),
+        ("git", "checkout", "-q", "--detach", "FETCH_HEAD"),
+    )
+    for step in steps:
+        done = _run(*step, cwd=copy)
+        if done.returncode:
+            msg = f"Cannot check out {ref} to measure it:\n{done.stderr}"
+            raise SystemExit(msg)
+
+
 def measure_at(ref: str) -> dict[str, Any]:
     """Measure `ref` in a copy of it, with this ratchet, so both sides are measured alike.
 
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
-    and is pointed at the copy, so the base is measured exactly as it stands.
+    and is pointed at the copy, so the base is measured exactly as it stands. The copy is
+    made inside the held folder, so a stop at any point removes it too.
     """
     with held_folder.HeldFolder(HELD) as tmp:
         copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
-        added = _run("git", "worktree", "add", "--detach", str(copy), ref)
-        if added.returncode:
-            msg = f"Cannot check out {ref} to measure it:\n{added.stderr}"
+        copy_of(ref, copy)
+        synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy)
+        if synced.returncode:
+            msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
             raise SystemExit(msg)
-        try:
-            synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy)
-            if synced.returncode:
-                msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
-                raise SystemExit(msg)
-            # The base's own runs keep their temporary files in here too, and go with it.
-            (scratch := Path(tmp) / "tmp").mkdir()
-            env = {**os.environ, "RATCHET_ROOT": str(copy), "TMPDIR": str(scratch)}
-            here = str(Path(__file__).resolve())
-            measured = _run("uv", "run", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
-            if measured.returncode:
-                msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
-                raise SystemExit(msg)
-            return dict(json.loads(out.read_text()))
-        finally:
-            _run("git", "worktree", "remove", "--force", str(copy))
+        # The base's own runs keep their temporary files in here too, and go with it.
+        (scratch := Path(tmp) / "tmp").mkdir()
+        env = {**os.environ, "RATCHET_ROOT": str(copy), "TMPDIR": str(scratch)}
+        here = str(Path(__file__).resolve())
+        measured = _run("uv", "run", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
+        if measured.returncode:
+            msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
+            raise SystemExit(msg)
+        return dict(json.loads(out.read_text()))
 
 
 STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -568,8 +594,7 @@ def sweep() -> None:
     """Remove what a ratchet killed before it could clean up left; never a running one's."""
     temporary = Path(tempfile.gettempdir())
     # RULE: a killed measurement's copy is swept at the next start
-    if held_folder.sweep(temporary, HELD):
-        _run("git", "worktree", "prune")  # the copy's entry in git, now that it is gone
+    held_folder.sweep(temporary, HELD)
 
 
 def main() -> int:
