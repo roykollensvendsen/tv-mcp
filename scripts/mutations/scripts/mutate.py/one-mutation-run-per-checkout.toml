@@ -1,0 +1,5 @@
+[[rule]]
+name = "one mutation run per checkout"
+file = "scripts/mutate.py"
+find = '^        fcntl\.flock\(held, fcntl\.LOCK_EX \| fcntl\.LOCK_NB\)$'
+replace = 'pass'

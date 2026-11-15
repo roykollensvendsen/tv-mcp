@@ -7,6 +7,12 @@ Where a rule already exists, this is the substitute. Every rule has one row,
 in a file of its own under scripts/mutations/. Run it from the repository root:
 
     uv run python scripts/mutate.py [--json mutations.json]
+    uv run python scripts/mutate.py --repair-only
+
+One run at a time holds the checkout; a second stops at once and says so. A stop
+(Ctrl-C, a cancelled CI job, a closed terminal) puts the mutated source back before the
+run ends. `--repair-only` puts back a source a killed run left mutated, and does nothing
+else.
 
 `--json` writes the run's figures for the checks to keep; in a check, the
 readable table goes to the run's summary page. Neither is ever committed.
@@ -24,6 +30,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -308,21 +315,51 @@ def _python(*args: str) -> str:
     return done.stdout
 
 
-def _start() -> None:
-    """Make the run stop cleanly, and put right what a killed earlier run left behind."""
-    stop_cleanly()
-    repair()
-    sweep()
-    same_checkout(_python)
+def hold_the_checkout() -> int:
+    """Take this checkout for the run, or stop: a second run would repair the first's mutation.
+
+    The lock is on the checkout's folder itself, so there is no lock file to leave behind,
+    and it is let go when the process ends, however it ends (easee-mcp #13's form).
+    """
+    held = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        # RULE: one mutation run per checkout
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(held)
+        msg = (
+            f"A mutation run is already running in {ROOT}; let it end, or stop it, before"
+            " starting another. Two at once would put back each other's switched-off rules."
+        )
+        raise SystemExit(msg) from None
+    return held
 
 
 def main() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks")
+    parser.add_argument(
+        "--repair-only", action="store_true", help="only put back a source a killed run left mutated"
+    )
     args = parser.parse_args()
 
-    _start()
+    stop_cleanly()
+    held = hold_the_checkout()
+    try:
+        return _run(args)
+    finally:
+        os.close(held)
+
+
+def _run(args: argparse.Namespace) -> int:
+    """The run itself, once this checkout is held."""
+    repair()
+    if args.repair_only:
+        # RULE: a repair-only run only repairs
+        return 0
+    sweep()
+    same_checkout(_python)
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
     rules = all_rows()
