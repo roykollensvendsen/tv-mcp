@@ -59,6 +59,28 @@ MUTATE_TMP = pathlib.Path(tempfile.gettempdir()) / (
 )
 
 
+#: A comment marking a rule; the marker in a string, as here, is not one.
+MARKER = re.compile(r"(?:^|\s)# RULE: \S")
+
+
+def marked_lines() -> list[str]:
+    """Every line marking a rule, in the source and in this repository's own scripts."""
+    sources = [*sorted((ROOT / "src").rglob("*.py")), *sorted((ROOT / "scripts").glob("*.py"))]
+    return [line for path in sources for line in path.read_text().splitlines() if MARKER.search(line)]
+
+
+def _no_rows() -> int:
+    """With no rows, a run passes only when no rule is marked either."""
+    print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
+    # No rows but marked rules is a check that would pass on nothing.
+    marked = len(marked_lines())
+    # RULE: rules marked with no rows fail the run
+    if marked:
+        print(f"{marked} rule{'s are' if marked > 1 else ' is'} marked, so this run fails")  # noqa: T201
+        return 1
+    return 0
+
+
 def test_name_for(rule: str) -> str:
     """The test name a rule requires: its own words, as an identifier.
 
@@ -254,8 +276,7 @@ def main() -> int:
     # A scaffolded repository starts with a table of comments and no rows.
     rules = all_rows()
     if not rules:
-        print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
-        return 0
+        return _no_rows()
     results = []
     lost: list[str] = []
     standing: tuple[pathlib.Path, str, str] | None = None

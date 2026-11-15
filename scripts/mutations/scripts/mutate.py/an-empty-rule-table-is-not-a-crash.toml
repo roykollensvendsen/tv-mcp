@@ -1,0 +1,5 @@
+[[rule]]
+name = "an empty rule table is not a crash"
+file = "scripts/mutate.py"
+find = '^    if not rules:$'
+replace = 'if False:'
