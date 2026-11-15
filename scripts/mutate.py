@@ -76,7 +76,12 @@ def _no_rows() -> int:
     marked = len(marked_lines())
     # RULE: rules marked with no rows fail the run
     if marked:
-        print(f"{marked} rule{'s are' if marked > 1 else ' is'} marked, so this run fails")  # noqa: T201
+        print(  # noqa: T201
+            f"{marked} rule{'s are' if marked > 1 else ' is'} marked, so this run fails."
+            f" Give each one a row file under {ROWS.relative_to(ROOT)}, or, if the rows were deleted"
+            " by mistake, put them back with"
+            f" `git checkout -- {ROWS.relative_to(ROOT)}`."
+        )
         return 1
     return 0
 
