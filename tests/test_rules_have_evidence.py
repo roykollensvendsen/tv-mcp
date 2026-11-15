@@ -39,7 +39,7 @@ def marked_rules() -> set[str]:
     # skill ships carry rules that skill proves.
     scripts = [
         ROOT / "scripts" / n
-        for n in ("mutate.py", "no_session_links.py", "private_data_scan.py", "ratchet.py")
+        for n in ("held_folder.py", "mutate.py", "no_session_links.py", "private_data_scan.py", "ratchet.py")
     ]
     sources = [*(ROOT / "src").rglob("*.py"), *scripts]
     for source in sorted(sources):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a held folder a killed holder left is removed by the next sweep"
+file = "scripts/held_folder.py"
+find = '^        if left_behind\(path\):$'
+replace = 'if False:'

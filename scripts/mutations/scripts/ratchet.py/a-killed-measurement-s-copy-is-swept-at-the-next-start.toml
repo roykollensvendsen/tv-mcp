@@ -1,0 +1,5 @@
+[[rule]]
+name = "a killed measurement's copy is swept at the next start"
+file = "scripts/ratchet.py"
+find = '^    if held_folder\.sweep\(temporary, HELD\):$'
+replace = 'if False:'

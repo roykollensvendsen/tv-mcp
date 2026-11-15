@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shared folder that is not ours stops the run"
+file = "scripts/held_folder.py"
+find = 'if found is None or found\.st_uid != os\.getuid\(\) or found\.st_mode & 0o077:'
+replace = 'if found is None:'

@@ -29,18 +29,19 @@ import json
 import os
 import pathlib
 import re
-import shutil
 import signal
-import stat
 import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-from typing import Any
+
+# Its neighbour in scripts/, found wherever this script is loaded from.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import held_folder
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: One row per file: scripts/mutations/<the row's `file`, extension included>/<the
@@ -160,42 +161,10 @@ def line_of(text: str, pattern: str, occurrence: int) -> int:
     raise SystemExit(msg)
 
 
-def _open_up(place: pathlib.Path) -> None:
-    """Give the owner back every right on one folder or file, adding to the rights it has.
-
-    A link is left alone: changing its rights would change whatever it points to,
-    which may be outside the run's folder.
-    """
-    if place.is_symlink():
-        return
-    with contextlib.suppress(OSError):
-        place.chmod(place.stat().st_mode | stat.S_IRWXU)
-
-
-def _writable_again(func: Callable[[str], object], path: str, _exc: object) -> None:
-    """Let a refused delete through: open up the path and its folder, then try again."""
-    for place in (pathlib.Path(path).parent, pathlib.Path(path)):
-        _open_up(place)
-    func(path)
-
-
-def _remove(folder: pathlib.Path) -> None:
-    """Delete a run's folder, even where a test took away the rights to read or delete it."""
-    if not folder.exists():
-        return
-    # A folder a test shut (mode 0) cannot even be listed, so open every folder first;
-    # the handler then covers anything that still refuses.
-    for place, folders, _ in os.walk(folder):
-        for name in folders:
-            _open_up(pathlib.Path(place) / name)
-    shutil.rmtree(folder, onexc=_writable_again)
-
-
 def sweep() -> None:
-    """Remove what an earlier run, killed before it could clean up, left behind."""
+    """Remove what earlier runs, killed before they could clean up, left; never a run's still going."""
     # RULE: a killed run's temporary files are swept at the next start
-    for left in MUTATE_TMP.iterdir() if MUTATE_TMP.is_dir() else []:
-        _remove(left)
+    held_folder.sweep(held_folder.ours(MUTATE_TMP), "run-")
 
 
 STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -273,8 +242,11 @@ def run_suite() -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    MUTATE_TMP.mkdir(parents=True, exist_ok=True)
-    temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
+    # Locked while the suite runs, so a sweep started meanwhile leaves it alone. Its
+    # programs' temporary files go in it too, and pytest's in a folder inside it: pytest
+    # empties its basetemp first, and would take the lock with it.
+    held = held_folder.HeldFolder("run-", held_folder.ours(MUTATE_TMP))
+    env["TMPDIR"] = held.name
     try:
         r = subprocess.run(  # noqa: S603 - this interpreter, pytest, and a folder this script made
             [
@@ -286,7 +258,7 @@ def run_suite() -> tuple[int, list[str]]:
                 "--color=no",
                 "-p",
                 "no:cacheprovider",
-                f"--basetemp={temporary}",
+                f"--basetemp={held.path / 'pytest'}",
             ],
             capture_output=True,
             text=True,
@@ -296,7 +268,7 @@ def run_suite() -> tuple[int, list[str]]:
         )
     finally:
         # RULE: a suite run leaves no temporary files behind
-        _remove(temporary)
+        held.remove()
     # --color=no covers the usual run; stripping covers a configuration that
     # turns colour back on, which would otherwise make every kill unattributable.
     # RULE: a coloured failure line is still attributed
@@ -306,11 +278,42 @@ def run_suite() -> tuple[int, list[str]]:
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
+def same_checkout(run: Callable[..., str]) -> None:
+    """Stop unless the tests would import this checkout's own package.
+
+    Two worktrees that shared one environment once had `uv run` in one reinstall the
+    package from the other's source in the middle of a run, so every rule showed the same
+    failing tests. Asked in a subprocess, with the interpreter and environment the suite
+    will get, since this script must never import the package itself: the ratchet runs
+    one tree's scripts in another tree's environment.
+    """
+    for package in sorted((ROOT / "src").glob("*/__init__.py")):
+        name, own = package.parent.name, package.parent.resolve()
+        found = pathlib.Path(run("-c", f"import {name}; print({name}.__file__)").strip()).resolve()
+        # RULE: the rule check never measures another checkout's code
+        if own not in found.parents:
+            msg = (
+                f"The tests here would import {name} from {found.parent}, not from this"
+                f" checkout's {own}: the environment belongs to another copy of the project."
+                f" Run `uv sync` in {ROOT} and start again."
+            )
+            raise SystemExit(msg)
+
+
+def _python(*args: str) -> str:
+    """What this interpreter prints, run as the suite will be run."""
+    done = subprocess.run(  # noqa: S603 - this interpreter, with arguments this script names
+        [sys.executable, *args], cwd=ROOT, capture_output=True, text=True, check=False
+    )
+    return done.stdout
+
+
 def _start() -> None:
     """Make the run stop cleanly, and put right what a killed earlier run left behind."""
     stop_cleanly()
     repair()
     sweep()
+    same_checkout(_python)
 
 
 def main() -> int:

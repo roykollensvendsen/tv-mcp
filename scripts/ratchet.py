@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import json
 import os
 import re
@@ -40,6 +41,10 @@ import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+# Its neighbour in scripts/, found wherever this script is loaded from.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import held_folder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -319,7 +324,11 @@ def _run(
             returncode = step.wait()
         except BaseException:
             # RULE: a stopped measurement stops its step and waits for it
-            os.killpg(step.pid, signal.SIGINT)
+            # A step that ended just as the stop came has no group left; the stop still
+            # goes on, and the wait below still reaps it.
+            # RULE: a step that has just ended does not hide the stop
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(step.pid, signal.SIGINT)
             sys.stderr.write(
                 f"Stopping: waiting for {command[0]} to clean up. If it hangs, end it from"
                 f" another terminal with: kill -9 -- -{step.pid}\n"
@@ -331,11 +340,39 @@ def _run(
         return subprocess.CompletedProcess(command, returncode, out.read(), err.read())
 
 
+def same_checkout(run: Callable[..., str]) -> None:
+    """Stop unless the tests would import this checkout's own package.
+
+    Two worktrees that shared one environment once had `uv run` in one reinstall the
+    package from the other's source in the middle of a run, so every rule showed the same
+    failing tests. Asked in a subprocess, with the interpreter and environment the suite
+    will get, since this script must never import the package itself: the ratchet runs
+    one tree's scripts in another tree's environment.
+    """
+    for package in sorted((ROOT / "src").glob("*/__init__.py")):
+        name, own = package.parent.name, package.parent.resolve()
+        found = Path(run("-c", f"import {name}; print({name}.__file__)").strip()).resolve()
+        # RULE: the ratchet never measures another checkout's code
+        if own not in found.parents:
+            msg = (
+                f"The tests here would import {name} from {found.parent}, not from this"
+                f" checkout's {own}: the environment belongs to another copy of the project."
+                f" Run `uv sync` in {ROOT} and start again."
+            )
+            raise SystemExit(msg)
+
+
+def _uv_python(*args: str) -> str:
+    """What the tree's own environment prints, run as its suite will be run."""
+    return _run("uv", "run", "python", *args).stdout
+
+
 def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
     """Every measure, from the tree as it is."""
+    same_checkout(_uv_python)
     # Whatever the suite and the mutation run leave in their temporary folder goes
     # with this one, so a measurement leaves nothing in the machine's /tmp.
-    with tempfile.TemporaryDirectory() as tmp:
+    with held_folder.HeldFolder(HELD) as tmp:
         env = {**os.environ, "TMPDIR": tmp}
         report = Path(tmp) / "coverage.json"
         started = time.monotonic()
@@ -469,7 +506,7 @@ def measure_at(ref: str) -> dict[str, Any]:
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
     and is pointed at the copy, so the base is measured exactly as it stands.
     """
-    with tempfile.TemporaryDirectory() as tmp:
+    with held_folder.HeldFolder(HELD) as tmp:
         copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
         added = _run("git", "worktree", "add", "--detach", str(copy), ref)
         if added.returncode:
@@ -523,6 +560,18 @@ def stop_cleanly() -> None:
         signal.signal(each, stop)
 
 
+#: The ratchet's own folders in the temporary folder: the tree's runs, and the base's copy.
+HELD = "tv-mcp-ratchet-"
+
+
+def sweep() -> None:
+    """Remove what a ratchet killed before it could clean up left; never a running one's."""
+    temporary = Path(tempfile.gettempdir())
+    # RULE: a killed measurement's copy is swept at the next start
+    if held_folder.sweep(temporary, HELD):
+        _run("git", "worktree", "prune")  # the copy's entry in git, now that it is gone
+
+
 def main() -> int:
     """Measure, or measure and compare with the base."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -533,6 +582,7 @@ def main() -> int:
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
     stop_cleanly()
+    sweep()
     if args.action == "measure":
         now = measure()
         if args.out:
