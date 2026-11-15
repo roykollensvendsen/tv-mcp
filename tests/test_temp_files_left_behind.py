@@ -330,25 +330,38 @@ while time.monotonic() < deadline:
     time.sleep(0.05)
 """
 
+#: Stands in for `uv run`: it starts the step and passes no signal on to it.
+LAUNCHER = """
+import signal, subprocess, sys
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+sys.exit(subprocess.run([sys.executable, *sys.argv[1:]]).returncode)
+"""
+
 MEASURING = """
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("ratchet", sys.argv[1])
 ratchet = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ratchet)
 ratchet.stop_cleanly()
-ratchet._run(sys.executable, sys.argv[2], sys.argv[3])
+ratchet._run(sys.executable, *sys.argv[2:])
 """
 
 
 def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
-    """Ctrl-C on the ratchet reaches its step once, through the ratchet, which then waits."""
+    """Ctrl-C on the ratchet reaches its step once, through the ratchet, which then waits.
+
+    The step is started through a launcher that passes no signal on, as `uv run` may not:
+    the stop has to reach every process of the step, as Ctrl-C in a terminal would.
+    """
     (tmp_path / "step.py").write_text(STEP)
+    (tmp_path / "launcher.py").write_text(LAUNCHER)
     (tmp_path / "measuring.py").write_text(MEASURING)
     run = subprocess.Popen(
         [
             sys.executable,
             str(tmp_path / "measuring.py"),
             str(ROOT / "scripts/ratchet.py"),
+            str(tmp_path / "launcher.py"),
             str(tmp_path / "step.py"),
             str(tmp_path),
         ],
