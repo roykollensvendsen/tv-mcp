@@ -208,6 +208,9 @@ def stop_cleanly() -> None:
     closed terminal (SIGHUP) and `kill` or GitHub's cancel (SIGTERM, after a SIGINT)
     each end the run here through `finally` instead. The first signal ignores the
     rest, so a second one cannot land inside the cleanup and cut it short.
+
+    Ctrl-C therefore ends the run as SystemExit(130), not KeyboardInterrupt, and
+    every signal ends it with 128 plus the signal's number, as a shell would report.
     """
 
     def stop(signum: int, _frame: object) -> None:
