@@ -91,10 +91,24 @@ sys.exit(mutate.main())
 """
 
 
-def test_a_mutation_run_told_to_stop_leaves_nothing_behind(tmp_path):
+def _git(project, *command):
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *command],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def _stopped_mid_mutation(tmp_path):
+    """A project kept in git, and a mutation run of it told to stop (SIGTERM) mid-suite."""
     temp = tmp_path / "tmp"
     temp.mkdir()
     project = _project(tmp_path, WAITS)
+    _git(project, "init", "-q")
+    _git(project, "add", ".")
+    _git(project, "commit", "-q", "-m", "the project as it is")
     (tmp_path / "driver.py").write_text(DRIVER)
     run = subprocess.Popen(
         [sys.executable, str(tmp_path / "driver.py"), str(ROOT / "scripts/mutate.py"), str(project)],
@@ -108,12 +122,24 @@ def test_a_mutation_run_told_to_stop_leaves_nothing_behind(tmp_path):
             time.sleep(0.1)
         assert list(temp.rglob("run-*")), "the run never started its suite"
         time.sleep(0.5)  # into the suite, so the mutated file is standing
+        assert (project / "src/rule.py").read_text() != GUARDED, "the rule was not switched off yet"
         run.send_signal(signal.SIGTERM)
         assert run.wait(timeout=30) != 0
     finally:
         run.kill()
-    assert list(temp.iterdir()) == []
+    return temp, project
+
+
+def test_a_mutation_run_told_to_stop_puts_the_source_back_as_git_has_it(tmp_path):
+    """The worst of what a stopped run can leave: a rule switched off in the source."""
+    _, project = _stopped_mid_mutation(tmp_path)
+    assert _git(project, "status", "--porcelain") == ""
     assert (project / "src/rule.py").read_text() == GUARDED
+
+
+def test_a_mutation_run_told_to_stop_leaves_nothing_behind(tmp_path):
+    temp, _ = _stopped_mid_mutation(tmp_path)
+    assert list(temp.iterdir()) == []
 
 
 def _ratchet(monkeypatch, temp):
