@@ -5,7 +5,10 @@ Each test loads a fresh copy of the runner and points it at temporary paths, so
 none of them touches the real recovery file or starts a real suite.
 """
 
+import fcntl
 import importlib.util
+import json
+import os
 import pathlib
 import subprocess
 
@@ -193,3 +196,46 @@ def repair():
 def test_a_rule_in_an_async_helper_repair_calls_is_found(real):
     """An `async def` helper runs switched off too, once repair() calls it."""
     assert _inside_repair(REPAIR_AWAITING_A_RULE, [], real) == ["an awaited repair is written whole"]
+
+
+def _left_mutated(monkeypatch, tmp_path, *args):
+    """A checkout whose source a killed run left mutated, with its row; no suite may start."""
+    runner = _runner(monkeypatch, tmp_path)
+    source = tmp_path / "rule.py"
+    source.write_text("x = 2\n")
+    (tmp_path / ".mutate-recovery.json").write_text(
+        json.dumps({"file": "rule.py", "original": "x = 1\n", "mutated": "x = 2\n"})
+    )
+    rows = tmp_path / "mutations/rule.py"
+    rows.mkdir(parents=True)
+    (rows / "x-is-one.toml").write_text(
+        '[[rule]]\nname = "x is one"\nfile = "rule.py"\nfind = "x = 1"\nreplace = "x = 2"\n'
+    )
+    suites = []
+    monkeypatch.setattr(runner, "run_suite", lambda: suites.append(1) or (0, []))
+    monkeypatch.setattr("sys.argv", ["mutate.py", *args])
+    return runner, source, suites
+
+
+def test_one_mutation_run_per_checkout(monkeypatch, tmp_path):
+    """A second run would repair the first one's live mutation, and both would measure nonsense."""
+    runner, source, suites = _left_mutated(monkeypatch, tmp_path)
+    first = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(first, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(SystemExit, match="already running"):
+            runner.main()
+    finally:
+        os.close(first)
+    assert source.read_text() == "x = 2\n"  # the first run's mutation, untouched
+    assert (tmp_path / ".mutate-recovery.json").exists()
+    assert suites == []
+
+
+def test_a_repair_only_run_only_repairs(monkeypatch, tmp_path):
+    runner, source, suites = _left_mutated(monkeypatch, tmp_path, "--repair-only")
+    monkeypatch.setattr(runner, "same_checkout", lambda _ask: None)
+    assert runner.main() == 0
+    assert source.read_text() == "x = 1\n"
+    assert not (tmp_path / ".mutate-recovery.json").exists()
+    assert suites == []
