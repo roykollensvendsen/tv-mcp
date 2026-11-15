@@ -462,6 +462,29 @@ def measure_at(ref: str) -> dict[str, Any]:
             _run("git", "worktree", "remove", "--force", str(copy))
 
 
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+
+def stop_cleanly() -> None:
+    """Let a run told to stop put away the base's copy and its temporary folder first.
+
+    By default a signal ends Python at once, with no `finally` run. Ctrl-C (SIGINT), a
+    closed terminal (SIGHUP) and `kill` or GitHub's cancel (SIGTERM, after a SIGINT)
+    each end the run here through `finally` instead. The first signal ignores the
+    rest, so a second one cannot land inside the cleanup and cut it short.
+    """
+
+    def stop(signum: int, _frame: object) -> None:
+        for each in STOPS:
+            # RULE: a second signal cannot cut the cleanup short of a measurement
+            signal.signal(each, signal.SIG_IGN)
+        raise SystemExit(128 + signum)
+
+    for each in STOPS:
+        # RULE: a stopped measurement removes its copy
+        signal.signal(each, stop)
+
+
 def main() -> int:
     """Measure, or measure and compare with the base."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -471,8 +494,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
-    # Told to stop, end through `finally`, so the base's copy and temporary folder go too.
-    signal.signal(signal.SIGTERM, lambda signum, _frame: sys.exit(128 + signum))
+    stop_cleanly()
     if args.action == "measure":
         now = measure()
         if args.out:

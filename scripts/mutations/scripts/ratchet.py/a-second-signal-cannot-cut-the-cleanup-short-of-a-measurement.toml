@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second signal cannot cut the cleanup short of a measurement"
+file = "scripts/ratchet.py"
+find = '^            signal\.signal\(each, signal\.SIG_IGN\)$'
+replace = 'pass'

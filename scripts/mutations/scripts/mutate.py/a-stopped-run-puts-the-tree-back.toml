@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped run puts the tree back"
+file = "scripts/mutate.py"
+find = '^        signal\.signal\(each, stop\)$'
+replace = 'pass'

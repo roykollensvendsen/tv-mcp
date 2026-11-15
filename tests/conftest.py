@@ -8,6 +8,7 @@ and in the middle of a mutation run the original would be lost. Proven by
 """
 
 import pathlib
+import signal
 
 import pytest
 
@@ -31,3 +32,17 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
             "A test that runs scripts/mutate.py must point RECOVERY at its own temporary file."
         )
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+@pytest.fixture(autouse=True)
+def _signal_handlers_kept():
+    """A test that runs a script's `main()` installs its stop handlers in this process.
+
+    Put the test run's own back afterwards, so Ctrl-C still stops pytest and a later
+    test of those handlers starts from a process that has none.
+    """
+    stops = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    before = {each: signal.getsignal(each) for each in stops}
+    yield
+    for each, handler in before.items():
+        signal.signal(each, handler)
