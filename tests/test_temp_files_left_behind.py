@@ -68,6 +68,9 @@ def test_a_mutation_run_leaves_the_temporary_folder_empty(tmp_path, monkeypatch)
     mutate = _load("mutate_leaves", ROOT / "scripts/mutate.py", monkeypatch, temp)
     project = _project(tmp_path, HOLDS)
     monkeypatch.setattr(mutate, "ROOT", project)
+    monkeypatch.setattr(
+        mutate, "same_checkout", lambda _ask: None
+    )  # a stand-in tree, with no package to check
     monkeypatch.setattr(mutate, "ROWS", project / "scripts/mutations")
     monkeypatch.setattr(mutate, "RECOVERY", project / "scripts/.mutate-recovery.json")
     monkeypatch.setattr(sys, "argv", ["mutate.py"])
@@ -92,6 +95,7 @@ mutate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mutate)
 mutate.ROOT, mutate.ROWS = project, project / "scripts/mutations"
 mutate.RECOVERY = project / "scripts/.mutate-recovery.json"
+mutate.same_checkout = lambda _ask: None  # a stand-in tree, with no package to check
 if len(sys.argv) > 3:  # a slow cleanup, so a second signal can be sent in the middle of it
     import time
     restore, cleaning = mutate.restore, pathlib.Path(sys.argv[3])

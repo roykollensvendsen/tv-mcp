@@ -22,6 +22,9 @@ def _runner(monkeypatch, tmp_path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        module, "same_checkout", lambda _ask: None
+    )  # a stand-in tree, with no package to check
     monkeypatch.setattr(module, "RECOVERY", tmp_path / ".mutate-recovery.json")
     monkeypatch.setattr(module, "ROWS", tmp_path / "mutations")
     # Its own: the real one holds the temporary files of the mutation run this may be inside.
