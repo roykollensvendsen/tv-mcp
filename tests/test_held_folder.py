@@ -104,6 +104,25 @@ def test_a_shared_folder_that_is_not_ours_stops_the_run(tmp_path):
         held_folder.ours(shared)
 
 
+def test_an_older_folder_of_ours_is_closed_to_others_not_refused(tmp_path):
+    """A folder made before this check, at 0755, keeps working: it is closed to 0700."""
+    older = tmp_path / "tv-mcp-mutate-12345678"
+    older.mkdir(mode=0o700)
+    older.chmod(0o755)
+    assert held_folder.ours(older) == older
+    assert older.stat().st_mode & 0o777 == 0o700
+
+
+def test_a_folder_of_ours_others_may_write_is_still_refused(tmp_path):
+    """Others may already have put entries in it, so it is never taken over by closing it."""
+    shared = tmp_path / "tv-mcp-mutate-12345678"
+    shared.mkdir(mode=0o700)
+    shared.chmod(0o775)
+    with pytest.raises(SystemExit, match="chmod 700"):
+        held_folder.ours(shared)
+    assert shared.stat().st_mode & 0o777 == 0o775
+
+
 def test_a_shared_folder_that_is_a_link_stops_the_run(tmp_path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir(mode=0o700)

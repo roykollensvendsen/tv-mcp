@@ -132,6 +132,14 @@ def ours(folder: Path) -> Path:
     else:
         try:
             found = os.fstat(opened)
+            # A folder of ours from before this check, at 0755, is closed rather than
+            # refused, on the very folder checked. One others may write is left alone and
+            # refused below, since it may already hold their entries.
+            mine = found.st_uid == os.getuid()
+            if mine and found.st_mode & 0o077 and not found.st_mode & 0o022:
+                # RULE: an older folder of ours is closed to others, not refused
+                os.fchmod(opened, 0o700)
+                found = os.fstat(opened)
         finally:
             os.close(opened)
     # RULE: a shared folder that is not ours stops the run

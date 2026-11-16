@@ -1,0 +1,5 @@
+[[rule]]
+name = "an older folder of ours is closed to others, not refused"
+file = "scripts/held_folder.py"
+find = '^                os\.fchmod\(opened, 0o700\)$'
+replace = 'pass'
