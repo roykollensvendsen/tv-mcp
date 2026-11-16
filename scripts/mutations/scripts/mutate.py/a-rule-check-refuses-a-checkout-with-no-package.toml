@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rule check refuses a checkout with no package"
+file = "scripts/mutate.py"
+find = '^    if not packages:$'
+replace = 'if False:'

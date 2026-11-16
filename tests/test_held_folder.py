@@ -245,6 +245,28 @@ def test_the_ratchet_never_measures_another_checkout_s_code(tmp_path, monkeypatc
     ratchet.same_checkout(lambda *_: str(root / "src/tv_mcp/__init__.py"))
 
 
+def _empty_checkout(tmp_path):
+    root = tmp_path / "checkout"
+    (root / "src").mkdir(parents=True)
+    return root
+
+
+def test_a_rule_check_refuses_a_checkout_with_no_package(tmp_path, monkeypatch):
+    root = _empty_checkout(tmp_path)
+    mutate = _script("mutate_empty", ROOT / "scripts/mutate.py", monkeypatch, root)
+    with pytest.raises(SystemExit, match="no package") as refused:
+        mutate.same_checkout(lambda *_: pytest.fail("there was nothing to ask about"))
+    assert str(root / "src") in str(refused.value)
+
+
+def test_a_measurement_refuses_a_checkout_with_no_package(tmp_path, monkeypatch):
+    root = _empty_checkout(tmp_path)
+    ratchet = _script("ratchet_empty", ROOT / "scripts/ratchet.py", monkeypatch, root)
+    with pytest.raises(SystemExit, match="no package") as refused:
+        ratchet.same_checkout(lambda *_: pytest.fail("there was nothing to ask about"))
+    assert str(root / "src") in str(refused.value)
+
+
 def test_this_checkout_s_tests_import_its_own_package():
     """Asked as the rule check asks it, in a subprocess: the real environment passes."""
     mutate = importlib.util.module_from_spec(

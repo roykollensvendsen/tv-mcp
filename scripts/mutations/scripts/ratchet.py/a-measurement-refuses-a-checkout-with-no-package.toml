@@ -1,0 +1,5 @@
+[[rule]]
+name = "a measurement refuses a checkout with no package"
+file = "scripts/ratchet.py"
+find = '^    if not packages:$'
+replace = 'if False:'

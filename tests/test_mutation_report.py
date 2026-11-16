@@ -34,6 +34,9 @@ def _run(tmp_path, monkeypatch, red, *args):
         "find = 'if guarded:'\nreplace = 'if True:'\n"
     )
     monkeypatch.setattr(mutate, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        mutate, "same_checkout", lambda _ask: None
+    )  # a stand-in tree, with no package to check
     monkeypatch.setattr(mutate, "ROWS", rows)
     monkeypatch.setattr(mutate, "RECOVERY", tmp_path / "scripts/.mutate-recovery.json")
     # Its own: the real one holds the temporary files of the mutation run this may be inside.

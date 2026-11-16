@@ -294,7 +294,16 @@ def same_checkout(run: Callable[..., str]) -> None:
     will get, since this script must never import the package itself: the ratchet runs
     one tree's scripts in another tree's environment.
     """
-    for package in sorted((ROOT / "src").glob("*/__init__.py")):
+    packages = sorted((ROOT / "src").glob("*/__init__.py"))
+    if not packages:
+        msg = (
+            f"There is no package in {ROOT / 'src'}, so there is nothing of this checkout's"
+            " own to measure. Run this from a tv-mcp checkout, where src/tv_mcp/ is, or put"
+            " the package back with `git checkout -- src`."
+        )
+        # RULE: a rule check refuses a checkout with no package
+        raise SystemExit(msg)
+    for package in packages:
         name, own = package.parent.name, package.parent.resolve()
         found = pathlib.Path(run("-c", f"import {name}; print({name}.__file__)").strip()).resolve()
         # RULE: the rule check never measures another checkout's code
