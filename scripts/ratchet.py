@@ -305,12 +305,14 @@ def _run(
 
     The step runs in a session of its own, so a Ctrl-C in the terminal reaches it once,
     through this script, rather than twice. Told to stop, this script sends SIGINT to the
-    step's whole process group, as a terminal's Ctrl-C would: the step is usually
-    `uv run ...`, and the program under uv must get the stop whether uv passes it on or
-    not. It then waits for the step to put things back, with no time limit: runs never
-    have one.
+    step alone, never to its whole process group: the step is usually `uv run ...`, and uv
+    passes a Ctrl-C on to the program under it, so a stop sent to the group would reach
+    that program twice and cut its cleanup short. Passing the stop on to what the step
+    started is the step's own job. This script then waits for the step to put things
+    back, with no time limit: runs never have one.
     A step that hangs then can be ended from another terminal with
-    `kill -9 -- -<the step's pid>`, which this script prints.
+    `kill -9 -- -<the step's pid>`, which this script prints: the session is what lets that
+    one command end everything the step started.
 
     What the step prints goes to temporary files rather than pipes: a step that prints a
     lot can then never stall on a full pipe while this script is waiting for it.
@@ -331,11 +333,12 @@ def _run(
         except BaseException:
             # RULE: a stopped measurement stops its step and waits for it
             try:
-                os.killpg(step.pid, signal.SIGINT)
+                # RULE: a stop goes to the step alone, never its whole group
+                os.kill(step.pid, signal.SIGINT)
             except ProcessLookupError:
-                # A step that ended just as the stop came has no group left: the stop goes
-                # on, and the wait below reaps it. One still running with no group of its
-                # own would never hear the stop, so that is never passed over.
+                # A step that ended just as the stop came is gone: the stop goes on, and
+                # the wait below reaps it. One that is still running would never hear the
+                # stop, so that is never passed over.
                 # RULE: a step that has just ended does not hide the stop
                 if step.poll() is None:
                     raise
