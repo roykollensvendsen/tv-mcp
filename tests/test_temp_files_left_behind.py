@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import sys
@@ -341,6 +342,14 @@ ratchet._run(*sys.argv[2:])
 
 def _stop_a_step_under_uv(tmp_path):
     """Run a real `uv run` step under the ratchet, stop the ratchet once, and wait for both."""
+    if shutil.which("uv") is None:
+        # In CI the proof must never drop out unseen, so there a missing uv fails.
+        if os.environ.get("CI"):
+            pytest.fail(
+                "uv is not on PATH in CI, so the proof that a stopped step hears Ctrl-C"
+                " once cannot run: install uv in the workflow, see CONTRIBUTING.md"
+            )
+        pytest.skip("needs uv, which the ratchet starts its steps through: install uv to run it")
     (tmp_path / "step.py").write_text(STEP)
     (tmp_path / "measuring.py").write_text(MEASURING)
     run = subprocess.Popen(
