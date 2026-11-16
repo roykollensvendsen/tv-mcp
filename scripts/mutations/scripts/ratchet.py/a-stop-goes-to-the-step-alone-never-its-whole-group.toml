@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stop goes to the step alone, never its whole group"
+file = "scripts/ratchet.py"
+find = '^                os\.kill\(step\.pid, signal\.SIGINT\)$'
+replace = 'os.killpg(step.pid, signal.SIGINT)'

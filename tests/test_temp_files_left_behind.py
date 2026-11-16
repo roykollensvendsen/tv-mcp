@@ -315,26 +315,19 @@ def test_a_second_signal_cannot_cut_the_cleanup_short_of_a_measurement(tmp_path,
 STEP = """
 import pathlib, signal, sys, time
 here = pathlib.Path(sys.argv[1])
-
-def cleanup(_signum, _frame):
-    (here / "got-int").write_text("")
-    time.sleep(1)  # a step that takes a moment to put things back
-    (here / "cleaned").write_text("")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, cleanup)
+stops = []
+signal.signal(signal.SIGINT, lambda _signum, _frame: stops.append(1))
 (here / "started").write_text("")
-deadline = time.monotonic() + 10  # a step never told to stop ends by itself
-while time.monotonic() < deadline:
+deadline = time.monotonic() + 30  # a step never told to stop ends by itself
+while not stops and time.monotonic() < deadline:
     time.sleep(0.05)
+time.sleep(1.5)  # a step that takes a moment to put things back; a second stop lands here
+(here / "stops").write_text(str(len(stops)))
+(here / "cleaned").write_text("")
 """
 
-#: Stands in for `uv run`: it starts the step and passes no signal on to it.
-LAUNCHER = """
-import signal, subprocess, sys
-signal.signal(signal.SIGINT, signal.SIG_IGN)
-sys.exit(subprocess.run([sys.executable, *sys.argv[1:]]).returncode)
-"""
+#: How the ratchet starts its own steps: through uv, which passes a Ctrl-C on to its child.
+THROUGH_UV = ("uv", "run", "--no-project", "python")
 
 MEASURING = """
 import importlib.util, sys
@@ -342,25 +335,20 @@ spec = importlib.util.spec_from_file_location("ratchet", sys.argv[1])
 ratchet = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ratchet)
 ratchet.stop_cleanly()
-ratchet._run(sys.executable, *sys.argv[2:])
+ratchet._run(*sys.argv[2:])
 """
 
 
-def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
-    """Ctrl-C on the ratchet reaches its step once, through the ratchet, which then waits.
-
-    The step is started through a launcher that passes no signal on, as `uv run` may not:
-    the stop has to reach every process of the step, as Ctrl-C in a terminal would.
-    """
+def _stop_a_step_under_uv(tmp_path):
+    """Run a real `uv run` step under the ratchet, stop the ratchet once, and wait for both."""
     (tmp_path / "step.py").write_text(STEP)
-    (tmp_path / "launcher.py").write_text(LAUNCHER)
     (tmp_path / "measuring.py").write_text(MEASURING)
     run = subprocess.Popen(
         [
             sys.executable,
             str(tmp_path / "measuring.py"),
             str(ROOT / "scripts/ratchet.py"),
-            str(tmp_path / "launcher.py"),
+            *THROUGH_UV,
             str(tmp_path / "step.py"),
             str(tmp_path),
         ],
@@ -369,16 +357,33 @@ def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
         stderr=subprocess.DEVNULL,
     )
     try:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + 60
         while not (tmp_path / "started").exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert (tmp_path / "started").exists(), "the step never started"
         run.send_signal(signal.SIGINT)
-        assert run.wait(timeout=30) != 0
+        assert run.wait(timeout=60) != 0
     finally:
         run.kill()
-    assert (tmp_path / "got-int").exists(), "the ratchet never passed the stop on to its step"
-    assert (tmp_path / "cleaned").exists(), "the ratchet ended before its step had cleaned up"
+    return tmp_path
+
+
+def test_a_stopped_measurement_stops_its_step_and_waits_for_it(tmp_path):
+    """Ctrl-C on the ratchet reaches its step through the ratchet, which then waits."""
+    here = _stop_a_step_under_uv(tmp_path)
+    assert (here / "stops").exists(), "the ratchet never passed the stop on to its step"
+    assert (here / "stops").read_text() != "0", "the ratchet never passed the stop on to its step"
+    assert (here / "cleaned").exists(), "the ratchet ended before its step had cleaned up"
+
+
+def test_a_stop_goes_to_the_step_alone_never_its_whole_group(tmp_path):
+    """The Python under `uv run` hears the stop exactly once, passed on to it by uv.
+
+    Sent to uv's whole process group instead, the stop would reach that Python twice, once
+    from the ratchet and once through uv, and a second Ctrl-C cuts pytest's cleanup short.
+    """
+    here = _stop_a_step_under_uv(tmp_path)
+    assert (here / "stops").read_text() == "1", "the Python under uv was not stopped exactly once"
 
 
 class _Stopped(Exception):  # noqa: N818 - a stand-in for Ctrl-C that cannot stop the test run
@@ -413,7 +418,7 @@ def test_a_step_that_has_just_ended_does_not_hide_the_stop(tmp_path, monkeypatch
     def gone(_pid, _signum):
         raise ProcessLookupError
 
-    monkeypatch.setattr(ratchet.os, "killpg", gone)
+    monkeypatch.setattr(ratchet.os, "kill", gone)
     with pytest.raises(_Stopped):
         ratchet._run("uv", "run", "python", "scripts/mutate.py")  # noqa: SLF001 - the step runner itself
     assert steps[0].waits == 2, "the step was not waited for after the stop"
@@ -433,7 +438,7 @@ def test_a_step_still_running_is_never_left_unstopped(tmp_path, monkeypatch):
     def gone(_pid, _signum):
         raise ProcessLookupError
 
-    monkeypatch.setattr(ratchet.os, "killpg", gone)
+    monkeypatch.setattr(ratchet.os, "kill", gone)
     with pytest.raises(ProcessLookupError):
         ratchet._run("uv", "run", "python", "scripts/mutate.py")  # noqa: SLF001 - the step runner itself
 
