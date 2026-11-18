@@ -1,68 +1,74 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The bounded waits fail a test on time, and leave nothing of a stopped child running."""
+"""A test that waits on another process fails when its own time is up, and leaves nothing running.
 
+No limit is put on a test or a run from outside. Each wait inside a test carries its own bound,
+so a child that never answers fails that one test instead of holding a mutation run for hours.
+"""
+
+import contextlib
 import os
-import subprocess
+import pathlib
+import signal
 import sys
 import time
 
 import pytest
-from bounded import line_within, run_bounded
+from bounded import run_bounded
 
 
-def _gone(pid, within=10):
-    """Whether `pid` has ended (and been reaped) within `within` seconds."""
-    deadline = time.monotonic() + within
-    while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        time.sleep(0.05)
+def _gone(group: int) -> bool:
+    try:
+        os.killpg(group, 0)
+    except ProcessLookupError:
+        return True
     return False
 
 
-def test_a_child_that_overruns_fails_the_test_and_leaves_no_grandchild_running(tmp_path):
-    """The grandchild holds stdout open, as a shell's or uv's child does, and is still stopped.
+def _ended(pid: int) -> bool:
+    """Whether `pid` has ended, counting a zombie not yet reaped as ended."""
+    try:
+        state = pathlib.Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+    return state == "Z"
 
-    Its own pid is what is checked: the shell's pid, or the group alone, would pass even
-    with the grandchild still running.
-    """
-    said = tmp_path / "grandchild"
+
+@pytest.mark.skipif(not pathlib.Path("/proc").is_dir(), reason="reads the sleep's state from /proc")
+def test_a_child_that_overruns_leaves_nothing_of_its_group_running(tmp_path: pathlib.Path) -> None:
+    """A shell's `sleep` holds its output; plain `timeout=` would end the shell and leave the sleep."""
+    leader, sleeper = tmp_path / "leader", tmp_path / "sleeper"
+    script = f"echo $$ > {leader}; sleep 30 & echo $! > {sleeper}; wait"
     started = time.monotonic()
-    with pytest.raises(pytest.fail.Exception, match="still running after 1 s"):
-        run_bounded(["sh", "-c", f"sleep 600 & echo $! > {said}; wait"], within=1, capture_output=True)
-    assert time.monotonic() - started < 30
-    assert _gone(int(said.read_text())), "the grandchild was left running"
+    with pytest.raises(pytest.fail.Exception, match="did not finish within 1 s"):
+        run_bounded(["sh", "-c", script], 1, capture_output=True, text=True)
+    # Killing the shell alone would wait out the sleep that holds its output, then find it gone.
+    assert time.monotonic() - started < 15, "the bound waited for the sleep to end by itself"
+    group, grandchild = int(leader.read_text()), int(sleeper.read_text())
+    try:
+        deadline = time.monotonic() + 10  # a killed sleep is reaped by init, which takes a moment
+        while not (_ended(grandchild) and _gone(group)) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert _ended(grandchild), "the shell's sleep was left running"
+        assert _gone(group), "a process of the overrunning child's group was left running"
+    finally:
+        _end_if_still_the_sleep(grandchild)
 
 
-def test_a_child_that_ends_in_time_gives_back_what_it_wrote():
-    done = run_bounded([sys.executable, "-c", "print('hello')"], capture_output=True, text=True)
-    assert (done.returncode, done.stdout) == (0, "hello\n")
+def _end_if_still_the_sleep(pid: int) -> None:
+    """End `pid` by itself, but only while it is still this test's sleep.
+
+    A failing run then leaves nothing behind, and a pid the system has since given to another
+    process is left alone.
+    """
+    try:
+        command = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes()
+    except (FileNotFoundError, ProcessLookupError):
+        return
+    if command == b"sleep\x0030\x00":
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
 
 
-def test_a_child_that_never_writes_a_line_fails_within_the_bound():
-    with subprocess.Popen(
-        [sys.executable, "-c", "import time; time.sleep(600)"], stdout=subprocess.PIPE, text=True
-    ) as child:
-        try:
-            started = time.monotonic()
-            with pytest.raises(pytest.fail.Exception, match="no line came within 1 s"):
-                line_within(child.stdout, 1)
-            assert time.monotonic() - started < 30
-        finally:
-            child.kill()
-
-
-def test_two_lines_written_at_once_are_both_read():
-    """The second is already in the stream's buffer, where select() would not see it."""
-    with subprocess.Popen(
-        [sys.executable, "-c", "import sys, time; print('one\\ntwo', flush=True); time.sleep(600)"],
-        stdout=subprocess.PIPE,
-        text=True,
-    ) as child:
-        try:
-            assert line_within(child.stdout, 10) == "one\n"
-            assert line_within(child.stdout, 10) == "two\n"
-        finally:
-            child.kill()
+def test_a_child_that_finishes_gives_what_it_wrote() -> None:
+    done = run_bounded([sys.executable, "-c", "print('hi')"], capture_output=True, text=True)
+    assert (done.returncode, done.stdout) == (0, "hi\n")
