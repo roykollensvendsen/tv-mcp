@@ -1,0 +1,5 @@
+[[rule]]
+name = "the TV's power is read as it is now, not as the Chromecast last said"
+file = "src/tv_mcp/drivers/chromecast.py"
+find = '^    cast\.socket_client\.receiver_controller\.update_status\('
+replace = 'pass'
