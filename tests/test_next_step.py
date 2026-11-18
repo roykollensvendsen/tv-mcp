@@ -17,6 +17,8 @@ import ast
 import pathlib
 import re
 
+from bounded import WITHIN
+
 import tv_mcp
 
 SOURCES = [pathlib.Path(tv_mcp.__file__).parent / name for name in ("service.py", "power.py")]
@@ -155,7 +157,7 @@ def test_a_tool_still_working_at_the_deadline_says_it_carries_on(monkeypatch):
 
     async def call_then_finish():
         built = server.build_server(service)
-        result = await asyncio.wait_for(built.call_tool("tv_status", {}), 2)  # never hang the suite
+        result = await asyncio.wait_for(built.call_tool("tv_status", {}), WITHIN)  # never hang the suite
         finish.set()
         for _ in range(3):
             await asyncio.sleep(0)

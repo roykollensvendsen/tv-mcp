@@ -21,6 +21,7 @@ import tempfile
 import time
 
 import pytest
+from bounded import WITHIN
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -118,6 +119,7 @@ def _git(project, *command):
         capture_output=True,
         text=True,
         check=True,
+        timeout=WITHIN,
     ).stdout
 
 
@@ -148,7 +150,7 @@ def _stopped_mid_mutation(tmp_path, *, then_terminated=False):
         stderr=subprocess.DEVNULL,
     )
     try:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + WITHIN
         while not list(temp.rglob("run-*")) and time.monotonic() < deadline:
             time.sleep(0.1)
         assert list(temp.rglob("run-*")), "the run never started its suite"
@@ -160,7 +162,7 @@ def _stopped_mid_mutation(tmp_path, *, then_terminated=False):
                 time.sleep(0.05)
             assert cleaning.exists(), "the cleanup never began"
         run.send_signal(signal.SIGTERM)
-        assert run.wait(timeout=30) != 0
+        assert run.wait(timeout=WITHIN) != 0
     finally:
         run.kill()
     return temp, project
@@ -370,12 +372,12 @@ def _stop_a_step_under_uv(tmp_path):
         stderr=subprocess.DEVNULL,
     )
     try:
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + WITHIN
         while not (tmp_path / "started").exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert (tmp_path / "started").exists(), "the step never started"
         run.send_signal(signal.SIGINT)
-        assert run.wait(timeout=60) != 0
+        assert run.wait(timeout=WITHIN) != 0
     finally:
         run.kill()
     return tmp_path

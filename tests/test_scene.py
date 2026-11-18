@@ -3,6 +3,8 @@
 
 import asyncio
 
+from bounded import WITHIN
+
 from tv_mcp import service as service_module
 from tv_mcp.media import Cue, Session, parse_srt, scene_lines
 from tv_mcp.service import TvService
@@ -153,7 +155,7 @@ def test_subtitles_slow_to_pull_out_get_an_answer_in_time_and_are_ready_when_ask
         second = await service.scene("the living room", minutes=2)
         return first, second, library.asked
 
-    first, second, asked = asyncio.run(ask_twice())
+    first, second, asked = asyncio.run(asyncio.wait_for(ask_twice(), WITHIN))
     assert first["outcome"] == "pending"
     assert "again" in first["say"]
     assert second["outcome"] == "done"

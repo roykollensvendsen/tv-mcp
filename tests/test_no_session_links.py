@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "scripts"))
 
 import no_session_links
+from bounded import WITHIN
 
 
 @pytest.mark.parametrize(
@@ -37,7 +38,7 @@ def test_attribution_and_ordinary_mentions_pass(message):
 
 def git(folder, *args):
     return subprocess.run(
-        ["git", "-C", str(folder), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(folder), *args], check=True, capture_output=True, text=True, timeout=WITHIN
     ).stdout
 
 

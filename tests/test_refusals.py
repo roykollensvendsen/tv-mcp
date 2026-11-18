@@ -11,6 +11,7 @@ import asyncio
 
 import httpx
 import pytest
+from bounded import WITHIN
 from samsungtvws.exceptions import UnauthorizedError
 
 from tv_mcp.driver import RefusedError
@@ -179,7 +180,7 @@ def _legacy_press(answer, *, repeat=1, wait=0.5):
             finally:
                 server.close()
 
-    return asyncio.run(run())
+    return asyncio.run(asyncio.wait_for(run(), WITHIN))
 
 
 def test_an_older_samsung_that_refuses_the_remote_is_said_as_refused():
