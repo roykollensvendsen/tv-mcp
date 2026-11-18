@@ -63,6 +63,14 @@ def test_two_mutations_never_share_a_bytecode_cache(monkeypatch, tmp_path):
     assert seen["env"].get("PYTHONDONTWRITEBYTECODE") == "1"
 
 
+def test_a_real_rule_check_has_no_time_limit(monkeypatch, tmp_path):
+    """Only a test's scratch suite is bounded; a slow machine must never cut a real run short."""
+    runner = _runner(monkeypatch, tmp_path)
+    seen = _suite_says(monkeypatch, runner, "1 failed\nFAILED tests/test_x.py::test_a\n")
+    runner.run_suite()
+    assert seen["timeout"] is None
+
+
 def test_a_coloured_failure_line_is_still_attributed(monkeypatch, tmp_path):
     runner = _runner(monkeypatch, tmp_path)
     red, plain = "\x1b[31m", "\x1b[0m"

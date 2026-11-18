@@ -22,8 +22,11 @@ def _mutate():
     return module
 
 
-def _run(tmp_path, monkeypatch, red, *args):
-    """mutate.py over one rule in a scratch tree, with `red` as what the suite reports."""
+def _run(tmp_path, monkeypatch, red, *args, suite=None):
+    """mutate.py over one rule in a scratch tree, with `red` as what the suite reports.
+
+    `suite`, when given, stands in for the suite instead, to see what was said before it ran.
+    """
     mutate = _mutate()
     (tmp_path / "src").mkdir()
     (tmp_path / "src/rule.py").write_text("if guarded:\n    pass\n")
@@ -41,7 +44,7 @@ def _run(tmp_path, monkeypatch, red, *args):
     monkeypatch.setattr(mutate, "RECOVERY", tmp_path / "scripts/.mutate-recovery.json")
     # Its own: the real one holds the temporary files of the mutation run this may be inside.
     monkeypatch.setattr(mutate, "MUTATE_TMP", tmp_path / "mutate-tmp")
-    monkeypatch.setattr(mutate, "run_suite", lambda: (len(red), red))
+    monkeypatch.setattr(mutate, "run_suite", suite or (lambda: (len(red), red)))
     monkeypatch.setattr(sys, "argv", ["mutate.py", *args])
     return mutate.main()
 
@@ -64,6 +67,39 @@ def test_a_passing_mutation_run_reports_each_rule_killed_by_its_own_test(tmp_pat
     figures = json.loads(report.read_text())
     assert (figures["killed"], figures["total"]) == (1, 1)
     assert (figures["rules"][0]["tests_red"], figures["rules"][0]["own_test_red"]) == (1, True)
+
+
+class _Pipe:
+    """Output that, like a pipe in CI, shows only what has been flushed."""
+
+    def __init__(self):
+        self.held, self.shown = "", ""
+
+    def write(self, text):
+        self.held += text
+        return len(text)
+
+    def flush(self):
+        self.shown, self.held = self.shown + self.held, ""
+
+
+def test_a_mutation_run_names_each_rule_before_it_tests_it(tmp_path, monkeypatch):
+    """The name must be out of the process, not in its buffer, by the time the suite starts.
+
+    In CI the output is a pipe, which Python holds back until it is full. A run that hung on
+    one rule left nothing in the log to say which, and its result line has to get out as well.
+    """
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    pipe, seen = _Pipe(), []
+    monkeypatch.setattr(sys, "stdout", pipe)
+
+    def suite():
+        seen.append(pipe.shown)
+        return 1, ["test_a_guard_holds"]
+
+    _run(tmp_path, monkeypatch, [], suite=suite)
+    assert "testing  a guard holds" in seen[0]
+    assert "KILLED   a guard holds: 1" in pipe.shown
 
 
 def test_the_readable_table_goes_to_the_check_s_summary(tmp_path, monkeypatch):

@@ -40,6 +40,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from typing import TYPE_CHECKING, Any
 
@@ -240,8 +241,12 @@ def restore(path: pathlib.Path, original: str, mutated: str) -> bool:
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def run_suite() -> tuple[int, list[str]]:
-    """Run the tests and give back how many failed, and which ones."""
+def run_suite(timeout: float | None = None) -> tuple[int, list[str]]:
+    """Run the tests and give back how many failed, and which ones.
+
+    `timeout` is for a test's scratch suite only, so a hang fails that test. A real
+    rule check never has a time limit: a slow machine must never cut it short.
+    """
     # Two mutations that replace equal-length text leave files of identical
     # size, and CPython validates a cached .pyc from the source's modification
     # time and size -- both at one-second resolution. Inside the same second
@@ -272,6 +277,8 @@ def run_suite() -> tuple[int, list[str]]:
             cwd=ROOT,
             check=False,
             env=env,
+            # RULE: a real rule check has no time limit
+            timeout=timeout,
         )
     finally:
         # RULE: a suite run leaves no temporary files behind
@@ -283,6 +290,17 @@ def run_suite() -> tuple[int, list[str]]:
     m = re.search(r"(\d+) (?:failed|error)", plain)
     failed = re.findall(r"^FAILED (\S+)", plain, re.MULTILINE)
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
+
+
+def _suite_for(rule: str) -> tuple[int, list[str], float]:
+    """The suite run against one rule's mutation, and the seconds it took."""
+    # Sent at once, not held until the run ends: in CI the output is a pipe, so a
+    # run that hangs would otherwise leave no word of which rule it hung on.
+    # RULE: a mutation run names each rule before it tests it
+    print(f"testing  {rule}", flush=True)  # noqa: T201
+    began = time.monotonic()
+    count, failed = run_suite()
+    return count, failed, time.monotonic() - began
 
 
 def same_checkout(run: Callable[..., str]) -> None:
@@ -394,7 +412,7 @@ def _run(args: argparse.Namespace) -> int:
             RECOVERY.write_text(json.dumps({"file": rule["file"], "original": text, "mutated": mutated}))
             path.write_text(mutated)
             standing = (path, text, mutated)
-            count, failed = run_suite()
+            count, failed, took = _suite_for(rule["name"])
             if not restore(path, text, mutated):
                 lost.append(rule["file"])
             standing = None
@@ -404,7 +422,7 @@ def _run(args: argparse.Namespace) -> int:
             by_its_own = own in failed
             results.append((rule["name"], rule["file"], count, own, by_its_own))
             verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
-            print(f"{verdict} {rule['name']}: {count}")  # noqa: T201
+            print(f"{verdict} {rule['name']}: {count} ({took:.0f} s)", flush=True)  # noqa: T201
     finally:
         if standing is not None:
             restore(*standing)

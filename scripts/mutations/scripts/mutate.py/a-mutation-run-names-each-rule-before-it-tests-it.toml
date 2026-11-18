@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation run names each rule before it tests it"
+file = "scripts/mutate.py"
+find = '^ {4}print\(f"testing  '
+replace = 'pass'
