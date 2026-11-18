@@ -394,6 +394,20 @@ def _wake_blocking(address: str) -> bool:  # pragma: no cover - a real device
     return True
 
 
+def fresh_status(cast: Any, within: float) -> Any:  # noqa: ANN401 - a PyChromecast cast and its status
+    """The status of `cast` as it answers now; what it last said, if it does not answer `within` seconds.
+
+    A kept connection holds what the Chromecast last pushed, when something on it changed.
+    A TV woken over HDMI comes on after the waker app has come and gone, and the Chromecast
+    need not push again, so a TV read from the kept status stayed "off" long after it was on.
+    """
+    answered = threading.Event()
+    # RULE: the TV's power is read as it is now, not as the Chromecast last said
+    cast.socket_client.receiver_controller.update_status(callback_function=lambda *_: answered.set())
+    answered.wait(within)
+    return cast.status
+
+
 def _status_blocking(address: str) -> Any:  # noqa: ANN401  # pragma: no cover - a real device
     """The Chromecast's own status, with what HDMI tells it; None when it does not answer."""
     try:
@@ -402,9 +416,9 @@ def _status_blocking(address: str) -> Any:  # noqa: ANN401  # pragma: no cover -
         return None
     try:
         cast, _, _ = _connection(address)
+        return fresh_status(cast, TIMEOUT)
     except (pychromecast.error.PyChromecastError, OSError, TimeoutError, ValueError, KeyError):
         return None
-    return cast.status
 
 
 def _screen_blocking(address: str) -> bool | None:  # pragma: no cover - a real device
