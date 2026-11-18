@@ -8,12 +8,12 @@ import fcntl
 import importlib.util
 import os
 import pathlib
-import subprocess
 import sys
 import tempfile
 import time
 
 import pytest
+from bounded import run_bounded
 
 ROOT = pathlib.Path(__file__).parent.parent
 spec = importlib.util.spec_from_file_location("held_folder", ROOT / "scripts/held_folder.py")
@@ -196,7 +196,7 @@ def test_the_conftest_is_what_gives_a_run_its_held_folder(tmp_path, sabotaged):
     )
     temp = tmp_path / "tmp"
     temp.mkdir()
-    done = subprocess.run(
+    done = run_bounded(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), "tests"],
         cwd=tmp_path,
         env={**os.environ, "TMPDIR": str(temp)},

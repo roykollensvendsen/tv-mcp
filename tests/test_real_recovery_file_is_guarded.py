@@ -9,10 +9,10 @@ when it happens. These tests copy it to a scratch project and prove it there.
 """
 
 import pathlib
-import subprocess
 import sys
 
 import pytest
+from bounded import run_bounded
 
 ROOT = pathlib.Path(__file__).parent.parent
 
@@ -33,7 +33,7 @@ def _run(tmp_path, test, *, there_before):
     )
     if there_before:
         (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}')
-    return subprocess.run(
+    return run_bounded(
         [
             sys.executable,
             "-m",

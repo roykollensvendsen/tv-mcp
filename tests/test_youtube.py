@@ -4,6 +4,7 @@
 import asyncio
 
 import httpx
+from bounded import WITHIN
 
 from tv_mcp import service as service_module
 from tv_mcp.drivers.samsung_tizen import SamsungTizen
@@ -355,7 +356,7 @@ def test_a_video_slow_to_start_gets_an_answer_in_time_and_keeps_starting(monkeyp
             await asyncio.sleep(0)
         return answer, lounge.played
 
-    answer, played = asyncio.run(play_then_finish())
+    answer, played = asyncio.run(asyncio.wait_for(play_then_finish(), WITHIN))
     assert answer["outcome"] == "starting"
     assert "STAR WARS Original Trailer" in answer["say"]
     assert played == [("living-room", "screen-1", TRAILER.id)]

@@ -9,6 +9,8 @@ import importlib.util
 import pathlib
 import subprocess
 
+from bounded import WITHIN
+
 ROOT = pathlib.Path(__file__).parent.parent
 WHO = ("-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -23,7 +25,7 @@ def _ratchet(monkeypatch, root):
 
 def _git(where, *args):
     return subprocess.run(
-        ["git", *args], cwd=where, capture_output=True, text=True, check=True
+        ["git", *args], cwd=where, capture_output=True, text=True, check=True, timeout=WITHIN
     ).stdout.strip()
 
 
