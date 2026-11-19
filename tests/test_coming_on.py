@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""A TV woken through its Chromecast takes about half a minute, longer than one voice call.
+
+Measured on the garage TV on 19.11: the yes at 10.53.46, and the screen seen on 25.6 s
+later, while a confirm has 10 s and the Claude app gives up after about 15. So the
+voice says when to ask again, and asking in the meantime says the TV is on its way
+rather than off. Nothing here switches anything: power is sent once, after the yes.
+"""
+
+import asyncio
+
+from test_power import GARAGE, CastWithCec, Clock, PowerDriver, _no_listen
+
+from tv_mcp.power import PowerService
+from tv_mcp.service import TvService
+from tv_mcp.settings import Settings
+from tv_mcp.tools.say import tv_lines
+
+
+def _garage(clock):
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+
+    async def wakes(address):
+        cast.woken.append(address)
+        return True
+
+    async def not_yet(address):
+        return False
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, not_yet
+    service = TvService(
+        Settings(tvs=(GARAGE,)),
+        drivers={tv_driver.key: tv_driver, cast.key: cast},
+        listen=_no_listen,
+        clock=clock,
+        sleep=ticking,
+    )
+    return service, tv_driver, cast, ticking
+
+
+def test_a_tv_woken_through_its_chromecast_is_said_to_take_half_a_minute():
+    clock = Clock()
+    service, tv_driver, cast, ticking = _garage(clock)
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["outcome"] == "starting"
+    assert answer["say"] == (
+        "I asked the garage to switch on through its Chromecast; it takes about half a minute to come on,"
+        " and the Chromecast may take the screen. Ask me again in half a minute whether it is on."
+    )
+    assert cast.woken == ["192.0.2.20"]
+    assert tv_driver.switched == []
+
+
+def test_a_tv_still_coming_on_is_said_to_be_on_its_way_not_off():
+    clock = Clock()
+    service, *_ = _garage(clock)
+    service.woken_by_hdmi(GARAGE)
+    clock.now += 12
+    [report] = asyncio.run(service.status("the garage"))
+    assert report["screen"] == "off"
+    assert report["coming_on"] == 12
+    assert tv_lines([report]) == (
+        "The garage is off or not reachable, the TV itself is not on yet: it was asked to switch on"
+        " 12 s ago, which takes about half a minute."
+    )
+
+
+def test_a_tv_asked_to_come_on_long_ago_and_still_off_is_said_to_be_off():
+    clock = Clock()
+    service, *_ = _garage(clock)
+    service.woken_by_hdmi(GARAGE)
+    clock.now += 181  # past the time a wake is still looked after
+    [report] = asyncio.run(service.status("the garage"))
+    assert "coming_on" not in report
+    assert "the TV itself is off" in tv_lines([report])
+
+
+def test_a_question_to_switch_on_through_the_chromecast_says_how_long_it_takes():
+    clock = Clock()
+    service, *_ = _garage(clock)
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0")
+    question = asyncio.run(power.request("on", "the garage"))
+    assert question["say"] == (
+        "The garage is off. Do you want me to switch it on? That takes about half a minute."
+    )
+
+
+def test_a_tv_still_starting_when_the_confirm_answers_is_said_as_starting_with_its_seconds():
+    clock = Clock()
+    service, *_, ticking = _garage(clock)
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["outcome"] == "starting"
+    assert answer["seconds"] == 9.0
+
+
+def test_a_switch_seen_in_time_gives_the_seconds_it_took():
+    clock = Clock()
+    service, _, cast, ticking = _garage(clock)
+    lit_after = clock.now + 3
+
+    async def lit(address):
+        return clock.now >= lit_after
+
+    cast.screen_on = lit
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["outcome"] == "done"
+    assert answer["seconds"] == 3.0
+
+
+def test_a_tv_asked_to_come_on_that_did_not_is_said_to_have_probably_failed():
+    clock = Clock()
+    service, *_ = _garage(clock)
+    service.woken_by_hdmi(GARAGE)
+    clock.now += 95
+    [report] = asyncio.run(service.status("the garage"))
+    assert report["not_on_after"] == 95
+    assert tv_lines([report]) == (
+        "The garage is off or not reachable, the TV itself has not come on: it was asked to switch on"
+        " 95 s ago, and it usually takes about half a minute. Ask me to switch it on again."
+    )
+
+
+def test_the_screen_behind_a_chromecast_is_read_through_hdmi_before_the_tv_answers():
+    # The garage TV's own port answered about 75 s after it came on (10.11); HDMI knows at once.
+    clock = Clock()
+    service, _, cast, _ = _garage(clock)
+
+    async def lit(address):
+        return True
+
+    cast.screen_on = lit
+    [report] = asyncio.run(service.status("the garage"))
+    assert report["screen"] == "on"
+
+
+def test_a_screen_neither_hdmi_nor_the_tv_can_tell_is_said_as_not_known():
+    clock = Clock()
+    service, _, cast, _ = _garage(clock)
+
+    async def cannot_tell(address):
+        return None
+
+    cast.screen_on = cannot_tell
+    [report] = asyncio.run(service.status("the garage"))
+    assert report["screen"] == "not known"

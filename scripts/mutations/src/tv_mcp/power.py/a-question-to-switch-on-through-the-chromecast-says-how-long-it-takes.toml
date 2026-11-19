@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question to switch on through the Chromecast says how long it takes"
+file = "src/tv_mcp/power.py"
+find = '^            say \+= f" That takes \{COMING_ON\}\."$'
+replace = 'pass'

@@ -27,6 +27,7 @@ from tv_mcp.driver import (
     ReadsInput,
     SeesApps,
     ShowsYouTube,
+    WakesScreen,
 )
 from tv_mcp.media import COMMANDS, named, outline, scene_lines, spoken_time
 from tv_mcp.settings import AmbiguousTvError, Settings, Tv, UnknownTvError, find_tv, input_key
@@ -87,6 +88,9 @@ INPUT_READ_WAIT = 3.0
 #: Seconds after a wake through the Chromecast in which it may still take the screen; the
 #: garage TV takes about a minute to come on (2026-11-10), and the Chromecast takes it after.
 GRAB_WITHIN = 180.0
+#: Seconds after such a wake in which a TV not on yet is said to be on its way rather than off;
+#: the garage TV came on 25.6 s after the yes (19.11), and its watch gives up at 90 s.
+COMING_ON_FOR = 90.0
 #: Seconds to wait before looking again whether the Chromecast took the screen back.
 GRAB_LOOK = 2.0
 #: Seconds the second look and the second send get together, so the voice still has its answer.
@@ -360,13 +364,38 @@ class TvService:
     async def _add_screen(self, tv: Tv, report: dict[str, Any]) -> None:
         """Add whether the TV itself is on, when another device (a Chromecast) plays to it.
 
-        Only silent reads: which of the TV's own ports answer.
+        Only silent reads: what HDMI tells the device in the TV, then which of the TV's own ports answer.
         """
         driver = self.drivers.get(tv.power_driver) if tv.power_driver else None
         if driver is None or not tv.power_address:
             return
-        info = await driver.read_info(tv.power_address)
-        report["screen"] = "on" if info is not None and info.power == "on" else "off"
+        report["screen"] = await self._screen(tv, driver)
+        woken = self._woken.get(tv.key)
+        if report["screen"] == "on" or woken is None:
+            return
+        ago = self._clock() - woken
+        if ago <= COMING_ON_FOR:
+            # RULE: a TV still coming on is said to be on its way, not off
+            report["coming_on"] = round(ago)
+        elif ago <= GRAB_WITHIN:
+            # RULE: a TV asked to come on that did not is said to have probably failed
+            report["not_on_after"] = round(ago)
+
+    async def _screen(self, tv: Tv, driver: Driver) -> str:
+        """'on', 'off', or 'not known' for the TV behind a device that plays to it."""
+        waker = self.drivers.get(tv.driver) if tv.power_on == "cec" else None
+        hdmi = waker if isinstance(waker, WakesScreen) and tv.address else None
+        if hdmi is not None and tv.address:
+            # The TV's own port answered about 75 s after it came on (10.11); HDMI knows at once.
+            # RULE: the screen behind a Chromecast is read through HDMI before the TV answers
+            lit = await hdmi.screen_on(tv.address)
+            if lit is not None:
+                return "on" if lit else "off"
+        info = await driver.read_info(tv.power_address or "")
+        if info is not None and info.power == "on":
+            return "on"
+        # RULE: a screen neither HDMI nor the TV can tell is said as not known
+        return "not known" if hdmi is not None else "off"
 
     async def discover(self, *, full: bool) -> dict[str, Any]:
         """The TVs in the settings, and any others that announced themselves."""

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV still starting when the confirm answers is said as starting, with its seconds"
+file = "src/tv_mcp/power.py"
+find = '^        return \{"outcome": "starting", "say": say, "seconds": so_far\}$'
+replace = 'return {"outcome": "unverified", "say": say}'
