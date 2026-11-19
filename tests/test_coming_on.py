@@ -165,3 +165,12 @@ def test_a_screen_neither_hdmi_nor_the_tv_can_tell_is_said_as_not_known():
     cast.screen_on = cannot_tell
     [report] = asyncio.run(service.status("the garage"))
     assert report["screen"] == "not known"
+
+
+def test_a_screen_hdmi_calls_off_but_the_tv_says_is_on_is_said_as_on():
+    # The garage set left is_stand_by True while it was on (10.11): HDMI's "off" is not the last word.
+    clock = Clock()
+    service, tv_driver, *_ = _garage(clock)
+    tv_driver.power = "on"
+    [report] = asyncio.run(service.status("the garage"))
+    assert report["screen"] == "on"

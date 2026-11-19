@@ -385,15 +385,21 @@ class TvService:
         """'on', 'off', or 'not known' for the TV behind a device that plays to it."""
         waker = self.drivers.get(tv.driver) if tv.power_on == "cec" else None
         hdmi = waker if isinstance(waker, WakesScreen) and tv.address else None
+        lit = None
         if hdmi is not None and tv.address:
             # The TV's own port answered about 75 s after it came on (10.11); HDMI knows at once.
             # RULE: the screen behind a Chromecast is read through HDMI before the TV answers
             lit = await hdmi.screen_on(tv.address)
-            if lit is not None:
-                return "on" if lit else "off"
+            if lit:
+                return "on"
         info = await driver.read_info(tv.power_address or "")
-        if info is not None and info.power == "on":
+        # The garage set left HDMI's standby flag set while it was on (10.11): the TV has the last word.
+        # RULE: a screen HDMI calls off but the TV says is on is said as on
+        tv_says_on = info is not None and info.power == "on"
+        if tv_says_on:
             return "on"
+        if lit is False:
+            return "off"
         # RULE: a screen neither HDMI nor the TV can tell is said as not known
         return "not known" if hdmi is not None else "off"
 
