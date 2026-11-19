@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV asked to come on that did not is said to have probably failed"
+file = "src/tv_mcp/service.py"
+find = '^            report\["not_on_after"\] = round\(ago\)$'
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the screen behind a Chromecast is read through HDMI before the TV answers"
+file = "src/tv_mcp/service.py"
+find = '^            lit = await hdmi\.screen_on\(tv\.address\)$'
+replace = 'lit = None'

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tv_mcp.power import COMING_ON
+
 
 def _capital(text: str) -> str:
     return text[:1].upper() + text[1:]
@@ -23,7 +25,7 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
             lines.append(
                 f"{_capital(name)} is {report['state']}{_screen(report)}{_input(report)}"
                 f"{_playing(report.get('playing'))}"
-                f"{_sound(report)}."
+                f"{_sound(report)}.{_again(report)}"
             )
     return " ".join(lines)
 
@@ -40,7 +42,24 @@ def waited_lines(reports: list[dict[str, Any]], tv: str | None, wanted: str, *, 
 
 def _screen(report: dict[str, Any]) -> str:
     """Whether the TV itself is on, when status reads a device that plays to it."""
+    if report.get("coming_on") is not None:
+        return (
+            f", the TV itself is not on yet: it was asked to switch on {report['coming_on']} s ago,"
+            f" which takes {COMING_ON}"
+        )
+    if report.get("not_on_after") is not None:
+        return (
+            f", the TV itself has not come on: it was asked to switch on {report['not_on_after']} s ago,"
+            f" and it usually takes {COMING_ON}"
+        )
+    if report.get("screen") == "not known":
+        return ", I cannot tell whether the TV itself is on"
     return f", the TV itself is {report['screen']}" if report.get("screen") else ""
+
+
+def _again(report: dict[str, Any]) -> str:
+    """What to do when a TV asked to switch on did not come on."""
+    return " Ask me to switch it on again." if report.get("not_on_after") is not None else ""
 
 
 def _input(report: dict[str, Any]) -> str:

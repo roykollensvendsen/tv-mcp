@@ -337,10 +337,10 @@ def test_a_tv_woken_by_cec_that_is_not_seen_on_in_time_is_said_to_be_on_its_way(
     power = _power_with_cast(tv_driver, cast)
     _run(power.request("on", "the garage"))
     answer = _run(power.confirm("token-0"))
-    assert answer["outcome"] == "unverified"
+    assert answer["outcome"] == "starting"
     assert answer["say"] == (
-        "I asked the garage to switch on through its Chromecast; it can take a minute before it is on,"
-        " and the Chromecast may take the screen. Ask me to wait for it to be on."
+        "I asked the garage to switch on through its Chromecast; it takes about half a minute to come on,"
+        " and the Chromecast may take the screen. Ask me again in half a minute whether it is on."
     )
 
 
@@ -431,7 +431,7 @@ def test_a_tv_not_seen_in_time_is_still_watched_only_to_log_when_it_comes(caplog
         await asyncio.gather(*power.watching)
         return answer
 
-    assert _run(confirmed_then_watched())["outcome"] == "unverified"
+    assert _run(confirmed_then_watched())["outcome"] == "starting"
     said = [record.getMessage() for record in caplog.records]
     assert said[-1] == "garage: seen on 31.0 s after the yes, after the answer"
     assert cast.woken == ["192.0.2.20"]

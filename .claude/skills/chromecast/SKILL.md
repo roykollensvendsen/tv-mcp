@@ -58,9 +58,12 @@ Tested on a Chromecast ("Garasje") in a 2012 Samsung UE40ES6715, 2026-11-09.
    since a Chromecast can never switch its TV off. HDMI also tells the
    Chromecast whether the TV is in standby (`is_stand_by` in its status,
    `screen_on`), but not every TV says: the garage set left it True while on
-   (2026-11-10). It then came on the network about 75 s after the wake, past
-   the voice's 30 s, so the voice says it can take a minute rather than "not
-   on yet".
+   (2026-11-10). It then came on the network about 75 s after the wake. Since
+   tv-mcp asks the Chromecast afresh (`fresh_status`), HDMI saw the garage TV
+   on 25.6 s after the yes (2026-11-19), longer than one voice call. So the
+   confirm answers "starting" and says to ask again in half a minute, and
+   status reads the screen through HDMI first and says "coming on" for 90 s
+   after the wake, then "has not come on" until the wake is 180 s old.
 
 ## Setting one up
 

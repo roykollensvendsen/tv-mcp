@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV woken through its Chromecast is said to take half a minute"
+file = "src/tv_mcp/power.py"
+find = '^            f"I asked \{tv\.spoken\} to switch on through its Chromecast; it takes \{COMING_ON\}"$'
+replace = 'f"I asked {tv.spoken} to switch on through its Chromecast; it can take a minute"'

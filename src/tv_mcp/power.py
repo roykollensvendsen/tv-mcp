@@ -37,6 +37,10 @@ CONFIRM_WITHIN = 10.0
 #: often, only to log when the TV came: that is what says how long a confirm should wait.
 WATCH_AFTER = 90.0
 WATCH_EVERY = 2.0
+#: How long a TV woken through its Chromecast takes to come on, as the voice says it, and
+#: when to ask again; measured on the garage TV on 19.11 at 25.6 s from the yes.
+COMING_ON = "about half a minute"
+AGAIN_IN = "half a minute"
 #: The words a request takes.
 STATES = ("on", "off")
 _OFF = {"standby", "standby or art mode", "showing art", "off or not reachable"}
@@ -144,6 +148,9 @@ class PowerService:
         self._pending = _Pending(token, tv, state == "on", self._clock())
         # The state first, then the question: "Switch it off?" read aloud sounds like a command.
         say = f"{tv.spoken.capitalize()} is {now}. Do you want me to switch it {state}?"
+        if state == "on" and self._waker(tv) is not None:
+            # RULE: a question to switch on through the Chromecast says how long it takes
+            say += f" That takes {COMING_ON}."
         return {"outcome": "question", "say": say, "token": token}
 
     async def confirm(self, token: str) -> dict[str, Any]:
@@ -184,21 +191,19 @@ class PowerService:
             )
         # Starting an app on the Chromecast asks the TV over HDMI to show the Chromecast.
         through_cast = pending.on and self._waker(pending.tv) is not None
-        if await self._seen(pending.tv, wanted, since=started, until=until):
-            return {"outcome": "done", "say": _now(pending.tv, wanted, through_cast=through_cast)}
+        seen = await self._seen(pending.tv, wanted, since=started, until=until)
+        took = round(self._clock() - started, 1)
+        if seen:
+            # RULE: a switch seen in time gives the seconds it took
+            return {
+                "outcome": "done",
+                "say": _now(pending.tv, wanted, through_cast=through_cast),
+                "seconds": took,
+            }
         watch = asyncio.ensure_future(self._watch_after(pending.tv, wanted, since=started))
         self.watching.add(watch)
         watch.add_done_callback(self.watching.discard)
-        wait = f" Ask me to wait for it to be {wanted}."
-        if through_cast:
-            # Woken over HDMI, a TV may take a minute to come on and may never say so in time.
-            say = (
-                f"I asked {pending.tv.spoken} to switch on through its Chromecast; it can take a minute"
-                " before it is on, and the Chromecast may take the screen."
-            )
-        else:
-            say = f"I sent it, but {pending.tv.spoken} is not {wanted} yet."
-        return {"outcome": "unverified", "say": say + wait}
+        return _not_yet(pending.tv, wanted, so_far=took, through_cast=through_cast)
 
     async def _seen(self, tv: Tv, wanted: str, *, since: float, until: float) -> bool:
         """Whether `tv` is seen `wanted`, looking once a second until the clock reaches `until`."""
@@ -250,6 +255,23 @@ class PowerService:
                 )
                 return
         _log.info("%s: not seen %s within %.0f s of the yes", tv.key, wanted, WATCH_AFTER)
+
+
+def _not_yet(tv: Tv, wanted: str, *, so_far: float, through_cast: bool) -> dict[str, Any]:
+    """The answer when `tv` was not seen `wanted` in time; woken through its Chromecast, it is starting."""
+    if through_cast:
+        # Woken over HDMI, the garage TV came on 25.6 s after the yes (19.11): longer than
+        # one voice call, so the voice says when asking again will find it on.
+        # RULE: a TV woken through its Chromecast is said to take half a minute
+        say = (
+            f"I asked {tv.spoken} to switch on through its Chromecast; it takes {COMING_ON}"
+            " to come on, and the Chromecast may take the screen."
+            f" Ask me again in {AGAIN_IN} whether it is on."
+        )
+        # RULE: a TV still starting when the confirm answers is said as starting, with its seconds
+        return {"outcome": "starting", "say": say, "seconds": so_far}
+    say = f"I sent it, but {tv.spoken} is not {wanted} yet. Ask me to wait for it to be {wanted}."
+    return {"outcome": "unverified", "say": say}
 
 
 def _now(tv: Tv, wanted: str, *, through_cast: bool) -> str:

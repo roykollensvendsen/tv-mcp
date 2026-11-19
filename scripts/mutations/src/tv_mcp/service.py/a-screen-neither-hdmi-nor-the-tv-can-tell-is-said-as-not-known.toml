@@ -1,0 +1,5 @@
+[[rule]]
+name = "a screen neither HDMI nor the TV can tell is said as not known"
+file = "src/tv_mcp/service.py"
+find = '^        return "not known" if hdmi is not None else "off"$'
+replace = 'return "off"'

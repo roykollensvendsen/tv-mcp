@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV still coming on is said to be on its way, not off"
+file = "src/tv_mcp/service.py"
+find = '^            report\["coming_on"\] = round\(ago\)$'
+replace = 'pass'
