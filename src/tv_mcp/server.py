@@ -29,8 +29,11 @@ INSTRUCTIONS = (
     "asking, and never try to reach a TV reported 'left alone'."
 )
 SIMULATED = "SIMULATED TVs, not real ones: say so. "
-#: The Claude app gives up on a call after about 15 seconds; every tool answers before then.
-ANSWER_WITHIN = 12.0
+#: Every tool answers by then. It was 12 s while the Claude app seemed to give up after about 15;
+#: the owner's calls of a minute and more came back (19.11), and a confirm for the garage TV
+#: needs about 40 s. The bridge's limit for tv must stay above this, or it cuts the call off.
+# RULE: the time for one answer covers the longest wait for a TV to come on
+ANSWER_WITHIN = 45.0
 #: What the voice hears when a tool is still working by then; the work carries on.
 WORKING = "That is taking a while, and it carries on. Ask again in a moment to hear how it went."
 #: What the voice hears when a TV or the library stops answering partway.

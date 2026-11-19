@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV woken through its Chromecast is watched until it has had time to come on"
+file = "src/tv_mcp/power.py"
+find = '^        until = started \+ \(WAKE_CONFIRM_WITHIN if through_cast else CONFIRM_WITHIN\)$'
+replace = 'until = started + CONFIRM_WITHIN'

@@ -24,7 +24,7 @@ def register(server: MCPServer[Any], service: TvService, simulated: bool) -> Non
     @server.tool(
         annotations=LOOKS,
         description="Is a TV on?\n'tv' as the owner said it; omit for all."
-        " wait_for 'on' or 'off' watches the named TV for about ten seconds.",
+        " wait_for 'on' or 'off' watches the named TV for about 40 seconds.",
     )
     async def tv_status(
         tv: str | None = None, wait_for: Literal["on", "off"] | None = None

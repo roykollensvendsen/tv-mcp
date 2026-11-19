@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Each tool answers within the time the voice gives it, and finishes soon after.
 
-Two limits apply. The Claude app waits 15 seconds for a tool's answer, so
-every tool answers within server.ANSWER_WITHIN, saying it carries on when its
-work is slower. claude-voice cuts a tool's work off after 30 seconds, and the
-voice then hears only "MCP tool call failed", with nothing to say to the
-owner. On 2026-11-09 switching the garage TV on did exactly that.
+Two limits apply. The Claude app waits for a tool's answer; it seemed to give
+up after 15 seconds, but the owner's calls of a minute and more came back
+(2026-11-19). Every tool answers within server.ANSWER_WITHIN, saying it carries
+on when its work is slower. claude-voice cuts a tool's work off after tv's
+[plugins.tv] timeout, and the voice then hears only "MCP tool call failed",
+with nothing to say to the owner. On 2026-11-09 switching the garage TV on did
+exactly that, at 30 seconds; the timeout is 60 since the garage TV's confirm
+waits for it to come on (2026-11-19).
 
 So each tool's longest path, added up from the waits it makes, has to leave
 room inside the limit. A new wait, or a longer one, goes into the sum here.
@@ -19,15 +22,16 @@ import pytest
 from tv_mcp import power, server, service
 from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen
 
-#: How long the Claude app waits for a tool, in seconds (the plugin standard's rule 3).
-VOICE_LIMIT = 15.0
+#: How long the Claude app waits for a tool, in seconds, as far as is known: calls of a
+#: minute came back (2026-11-19). The plugin standard's rule 3 still says 15.
+VOICE_LIMIT = 60.0
 #: Room kept for everything not counted: the bridge, quick calls, the network.
 MARGIN = 2.0
 
 LONGEST = {
     # The switch and the watching after it share one deadline; only the look first is outside it.
     "power on, a TV before Tizen": 2 * samsung_legacy.REACH_WAIT + power.CONFIRM_WITHIN,
-    "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT + power.CONFIRM_WITHIN,
+    "power on, by HDMI from a Chromecast": chromecast.CONNECT_TIMEOUT + power.WAKE_CONFIRM_WITHIN,
     "power off, a TV before Tizen": 2 * samsung_legacy.REACH_WAIT + power.CONFIRM_WITHIN,
     "play, opening Jellyfin first": samsung_tizen.TIMEOUT + service.OPEN_WAIT + jellyfin.TIMEOUT,
     "open an app, watched until it is in front": samsung_tizen.TIMEOUT + service.OPEN_IN_FRONT_WITHIN,
@@ -75,8 +79,10 @@ LONGEST = {
 }
 
 
+#: How long a tool's work may run before claude-voice cuts it off: tv's [plugins.tv] timeout.
+BRIDGE_LIMIT = 60.0
 #: How long a tool's work may run on after the voice was told it carries on.
-FINISHED_WITHIN = 30.0
+FINISHED_WITHIN = BRIDGE_LIMIT
 
 
 def test_a_tools_longest_wait_fits_in_the_voices_time():
@@ -85,5 +91,5 @@ def test_a_tools_longest_wait_fits_in_the_voices_time():
 
 
 @pytest.mark.parametrize("seconds", LONGEST.values(), ids=LONGEST.keys())
-def test_a_tools_longest_path_finishes_within_half_a_minute(seconds):
+def test_a_tools_longest_path_finishes_before_the_bridge_cuts_it_off(seconds):
     assert seconds <= FINISHED_WITHIN

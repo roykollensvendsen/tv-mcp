@@ -406,7 +406,7 @@ def test_a_tv_not_seen_in_time_is_still_watched_only_to_log_when_it_comes(caplog
     clock = Clock()
     tv_driver = PowerDriver("off")
     cast = CastWithCec(tv_driver)
-    lit_after = clock.now + 31
+    lit_after = clock.now + 61
 
     async def wakes(address):
         cast.woken.append(address)
@@ -433,7 +433,7 @@ def test_a_tv_not_seen_in_time_is_still_watched_only_to_log_when_it_comes(caplog
 
     assert _run(confirmed_then_watched())["outcome"] == "starting"
     said = [record.getMessage() for record in caplog.records]
-    assert said[-1] == "garage: seen on 31.0 s after the yes, after the answer"
+    assert said[-1] == "garage: seen on 61.0 s after the yes, after the answer"
     assert cast.woken == ["192.0.2.20"]
     assert tv_driver.switched == []
 

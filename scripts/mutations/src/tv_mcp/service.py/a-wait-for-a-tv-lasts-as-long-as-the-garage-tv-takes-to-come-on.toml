@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wait for a TV lasts as long as the garage TV takes to come on"
+file = "src/tv_mcp/service.py"
+find = '^WAIT_WITHIN = 40\.0$'
+replace = 'WAIT_WITHIN = 10.0'
