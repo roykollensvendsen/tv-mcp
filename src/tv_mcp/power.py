@@ -33,6 +33,10 @@ EXPIRES = 30.0
 #: itself, then watching the TV until it is seen in its new state. It stays inside
 #: server.ANSWER_WITHIN, so the voice hears how it went rather than "working".
 CONFIRM_WITHIN = 10.0
+#: How long a confirm watches a TV woken through its Chromecast: the garage TV came on 25.6 s
+#: after the yes (19.11), so the voice can hear "on" in the same answer. The owner's long calls
+#: came back (19.11), and the bridge's limit for tv must be above server.ANSWER_WITHIN.
+WAKE_CONFIRM_WITHIN = 40.0
 #: After a confirm that could not see the switch in time, how long tv-mcp keeps looking, and how
 #: often, only to log when the TV came: that is what says how long a confirm should wait.
 WATCH_AFTER = 90.0
@@ -171,7 +175,10 @@ class PowerService:
                 f"{pending.tv.spoken.capitalize()} is already {wanted}; nothing was sent."
                 " Ask for the other way if you meant that."
             )
-        until = started + CONFIRM_WITHIN
+        # Starting an app on the Chromecast asks the TV over HDMI to show the Chromecast.
+        through_cast = pending.on and self._waker(pending.tv) is not None
+        # RULE: a TV woken through its Chromecast is watched until it has had time to come on
+        until = started + (WAKE_CONFIRM_WITHIN if through_cast else CONFIRM_WITHIN)
         switching = asyncio.ensure_future(self._switch(pending.tv, on=pending.on))
         self._running.add(switching)
         switching.add_done_callback(self._running.discard)
@@ -189,8 +196,6 @@ class PowerService:
             return _refused(
                 f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
             )
-        # Starting an app on the Chromecast asks the TV over HDMI to show the Chromecast.
-        through_cast = pending.on and self._waker(pending.tv) is not None
         seen = await self._seen(pending.tv, wanted, since=started, until=until)
         took = round(self._clock() - started, 1)
         if seen:

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""A TV woken through its Chromecast takes about half a minute, longer than one voice call.
+"""A TV woken through its Chromecast takes about half a minute to come on.
 
 Measured on the garage TV on 19.11: the yes at 10.53.46, and the screen seen on 25.6 s
-later, while a confirm has 10 s and the Claude app gives up after about 15. So the
-voice says when to ask again, and asking in the meantime says the TV is on its way
-rather than off. Nothing here switches anything: power is sent once, after the yes.
+later, while a confirm had 10 s then. So the confirm now watches a wake for 40 s, and
+if the TV is still not on, the voice says when to ask again; asking in the meantime says it is
+on its way rather than off. Nothing here switches anything: power is sent once, after the yes.
 """
 
 import asyncio
@@ -106,7 +106,7 @@ def test_a_tv_still_starting_when_the_confirm_answers_is_said_as_starting_with_i
 
     answer = asyncio.run(answered())
     assert answer["outcome"] == "starting"
-    assert answer["seconds"] == 9.0
+    assert answer["seconds"] == 39.0
 
 
 def test_a_switch_seen_in_time_gives_the_seconds_it_took():
@@ -174,3 +174,48 @@ def test_a_screen_hdmi_calls_off_but_the_tv_says_is_on_is_said_as_on():
     tv_driver.power = "on"
     [report] = asyncio.run(service.status("the garage"))
     assert report["screen"] == "on"
+
+
+def test_a_tv_woken_through_its_chromecast_is_watched_until_it_has_had_time_to_come_on():
+    # The garage TV came on 25.6 s after the yes (19.11): the confirm sees it, in the same answer.
+    clock = Clock()
+    service, tv_driver, cast, ticking = _garage(clock)
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        yes = clock.now
+
+        async def on_after_a_while(address):
+            return clock.now - yes >= 26
+
+        cast.screen_on = on_after_a_while
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["outcome"] == "done"
+    assert 26 <= answer["seconds"] <= 27
+    assert cast.woken == ["192.0.2.20"]
+    assert tv_driver.switched == []
+
+
+def test_a_wait_for_a_tv_lasts_as_long_as_the_garage_tv_takes_to_come_on():
+    clock = Clock()
+    service, _tv, cast, _ = _garage(clock)
+    started = clock.now
+
+    async def on_after_a_while(address):
+        return clock.now - started >= 26
+
+    cast.screen_on = on_after_a_while
+    waited = asyncio.run(service.wait_for("the garage", "on"))
+    assert waited["reached"] is True
+
+
+def test_the_time_for_one_answer_covers_the_longest_wait_for_a_tv_to_come_on():
+    from tv_mcp import power, server, service  # noqa: PLC0415
+    from tv_mcp.drivers import chromecast  # noqa: PLC0415
+
+    # The switch through the Chromecast, then the watch, both inside one answer.
+    assert chromecast.CONNECT_TIMEOUT < power.WAKE_CONFIRM_WITHIN < server.ANSWER_WITHIN
+    assert service.WAIT_WITHIN < server.ANSWER_WITHIN

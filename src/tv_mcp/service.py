@@ -82,7 +82,8 @@ YOUTUBE_WAIT = 8.0
 SUBTITLES_KEPT = 4
 #: How long status waits for a TV to come on or go off, when asked to: inside
 #: server.ANSWER_WITHIN, so the voice hears the outcome and can ask to wait again.
-WAIT_WITHIN = 10.0
+# RULE: a wait for a TV lasts as long as the garage TV takes to come on
+WAIT_WITHIN = 40.0
 #: How long status waits to hear which input a TV shows, before saying what it knows.
 INPUT_READ_WAIT = 3.0
 #: Seconds after a wake through the Chromecast in which it may still take the screen; the

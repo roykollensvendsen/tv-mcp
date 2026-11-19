@@ -70,11 +70,12 @@ A rule (a refusal, a limit, a safety check) is one line marked
 - Arguments the owner would say: a title, a TV's friendly name, never an
   address or an id.
 - Answers carry a `say` line to read aloud, and refusals say why and what to do.
-- It answers within 15 seconds: the Claude app gives up on a call after that
-  (claude-voice after 30), and the voice hears only "MCP tool call failed",
-  with nothing to tell the owner. The server answers for any tool still
-  working at `server.ANSWER_WITHIN` (12 s) that it carries on, and lets the
-  work finish; a tool's own wait should still answer first, with a better
+- It answers within `server.ANSWER_WITHIN` (45 s). claude-voice cuts a call
+  off at tv's `[plugins.tv]` timeout (60 s since 19.11; 30 when left out),
+  and the voice then hears only "MCP tool call failed", with nothing to tell
+  the owner. The Claude app was thought to give up after 15 s, but calls of
+  a minute came back (19.11). The server answers for any tool still working
+  at `server.ANSWER_WITHIN` that it carries on, and lets the work finish; a tool's own wait should still answer first, with a better
   sentence. A TV that is slow or asleep gets a short wait,
   then an honest answer ("sent, but not on yet"), never a longer wait. Work
   that really takes longer, such as a screen starting a video, keeps running
