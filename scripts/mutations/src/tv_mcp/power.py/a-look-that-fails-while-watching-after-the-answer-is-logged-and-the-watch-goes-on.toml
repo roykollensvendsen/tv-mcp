@@ -1,0 +1,5 @@
+[[rule]]
+name = "a look that fails while watching after the answer is logged, and the watch goes on"
+file = "src/tv_mcp/power.py"
+find = '^                continue$'
+replace = 'return'

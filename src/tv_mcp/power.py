@@ -250,6 +250,16 @@ class PowerService:
             try:
                 state = await asyncio.wait_for(self._state(tv), WATCH_EVERY * 2)
             except TimeoutError:
+                state = None
+            # A TV starting up may refuse a connection in exactly this window; the number is still wanted.
+            except Exception as failure:  # noqa: BLE001 - nobody awaits the watch, so it logs and goes on
+                # RULE: a look that fails while watching after the answer is logged, and the watch goes on
+                _log.info(
+                    "%s: a look failed %.1f s after the yes: %s",
+                    tv.key,
+                    self._clock() - since,
+                    type(failure).__name__,
+                )
                 continue
             if state == wanted:
                 # RULE: a TV not seen in time is still watched, only to log when it comes
