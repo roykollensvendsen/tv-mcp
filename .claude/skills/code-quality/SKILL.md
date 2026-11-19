@@ -158,7 +158,7 @@ hardware. Such a cell may be marked exempt, and only like this:
 [[exempt]]
 measure = "complexity"
 reason = "the tool table is one long match on the tool's name"
-approved = "Roy, 2026-11-11, in pull request #212"
+approved = "the owner, 2026-11-11, in pull request #212"
 ```
 
 The bridge reads `quality.toml` from its clone of this repository. The page
