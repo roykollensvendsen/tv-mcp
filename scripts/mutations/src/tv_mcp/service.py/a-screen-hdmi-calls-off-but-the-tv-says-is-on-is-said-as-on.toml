@@ -1,0 +1,5 @@
+[[rule]]
+name = "a screen HDMI calls off but the TV says is on is said as on"
+file = "src/tv_mcp/service.py"
+find = '^        tv_says_on = info is not None and info\.power == "on"$'
+replace = 'tv_says_on = lit is None and info is not None and info.power == "on"'
