@@ -202,9 +202,14 @@ def test_a_confirmed_switch_answers_once_within_the_voice_time():
     power = PowerService(service, clock=clock, new_token=lambda: next(tokens), sleep=ticking)
     _run(power.request("off", "The Frame"))
     started = clock.now
-    answer = _run(power.confirm("token-0"))
+
+    async def answered():
+        # The time the answer comes; the read-only watch after it may go on looking.
+        return await power.confirm("token-0"), clock.now
+
+    answer, at = _run(answered())
     assert answer["outcome"] == "unverified"
-    assert clock.now - started <= CONFIRM_WITHIN
+    assert at - started <= CONFIRM_WITHIN
     assert CONFIRM_WITHIN < ANSWER_WITHIN
 
 
@@ -359,3 +364,107 @@ def test_a_token_is_kept_when_nothing_reached_the_tv():
 
     driver.switch = answers
     assert _run(power.confirm("token-0"))["outcome"] == "done"
+
+
+def test_a_confirmed_switch_logs_each_look_at_the_tv_with_its_time(caplog):
+    # 2026-11-19: the garage TV came on after a confirm that said "unverified", and nothing
+    # showed when: how long it takes is what decides how long a confirm should watch.
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+    lit_after = clock.now + 2
+
+    async def wakes(address):
+        cast.woken.append(address)
+        return True
+
+    async def screen(address):
+        return clock.now >= lit_after
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, screen
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    caplog.set_level("INFO", logger="tv_mcp.power")
+    assert _run(power.confirm("token-0"))["outcome"] == "done"
+    assert [record.getMessage() for record in caplog.records] == [
+        "garage: switch on sent, 0.0 s after the yes",
+        "garage: look 1, 0.0 s after the yes, answered in 0.0 s: off",
+        "garage: look 2, 1.0 s after the yes, answered in 0.0 s: off",
+        "garage: look 3, 2.0 s after the yes, answered in 0.0 s: on",
+    ]
+
+
+def test_a_tv_not_seen_in_time_is_still_watched_only_to_log_when_it_comes(caplog):
+    # The voice has to hear within its time; the TV may come on later. Watching it after the
+    # answer only logs when, so the wait a confirm needs can be read off a real switch.
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+    lit_after = clock.now + 31
+
+    async def wakes(address):
+        cast.woken.append(address)
+        return True
+
+    async def screen(address):
+        return clock.now >= lit_after
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, screen
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    caplog.set_level("INFO", logger="tv_mcp.power")
+
+    async def confirmed_then_watched():
+        answer = await power.confirm("token-0")
+        await asyncio.gather(*power.watching)
+        return answer
+
+    assert _run(confirmed_then_watched())["outcome"] == "unverified"
+    said = [record.getMessage() for record in caplog.records]
+    assert said[-1] == "garage: seen on 31.0 s after the yes, after the answer"
+    assert cast.woken == ["192.0.2.20"]
+    assert tv_driver.switched == []
+
+
+def test_watching_after_the_answer_gives_up_after_its_bound(caplog):
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+
+    async def wakes(address):
+        return True
+
+    async def never(address):
+        return False
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, never
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    caplog.set_level("INFO", logger="tv_mcp.power")
+
+    async def confirmed_then_watched():
+        await power.confirm("token-0")
+        await asyncio.gather(*power.watching)
+
+    _run(confirmed_then_watched())
+    said = [record.getMessage() for record in caplog.records]
+    assert said[-1] == "garage: not seen on within 90 s of the yes"
+    assert tv_driver.switched == []

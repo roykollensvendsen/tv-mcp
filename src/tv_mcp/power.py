@@ -10,6 +10,7 @@ voice's instructions, so no wording of a request can skip the question.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import secrets
 import time
@@ -32,9 +33,14 @@ EXPIRES = 30.0
 #: itself, then watching the TV until it is seen in its new state. It stays inside
 #: server.ANSWER_WITHIN, so the voice hears how it went rather than "working".
 CONFIRM_WITHIN = 10.0
+#: After a confirm that could not see the switch in time, how long tv-mcp keeps looking, and how
+#: often, only to log when the TV came: that is what says how long a confirm should wait.
+WATCH_AFTER = 90.0
+WATCH_EVERY = 2.0
 #: The words a request takes.
 STATES = ("on", "off")
 _OFF = {"standby", "standby or art mode", "showing art", "off or not reachable"}
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,8 @@ class PowerService:
         self._pending: _Pending | None = None
         #: Switches still on their way when a confirm had to answer.
         self._running: set[asyncio.Future[bool]] = set()
+        #: Looks at a TV after its confirm answered, kept until they end.
+        self.watching: set[asyncio.Future[None]] = set()
 
     def _waker(self, tv: Tv) -> WakesScreen | None:
         """The device in `tv` that switches it on over HDMI, when it is set up to."""
@@ -165,6 +173,8 @@ class PowerService:
             sent = await asyncio.wait_for(asyncio.shield(switching), max(until - self._clock(), 0.1))
         except TimeoutError:
             sent = True
+        # How long a TV takes to come on decides how long a confirm should watch (19.11).
+        _log.info("%s: switch %s sent, %.1f s after the yes", pending.tv.key, wanted, self._clock() - started)
         if not sent:
             # Nothing reached the TV, so the yes still stands while the question is fresh.
             if self._pending is None:
@@ -174,8 +184,11 @@ class PowerService:
             )
         # Starting an app on the Chromecast asks the TV over HDMI to show the Chromecast.
         through_cast = pending.on and self._waker(pending.tv) is not None
-        if await self._seen(pending.tv, wanted, until=until):
+        if await self._seen(pending.tv, wanted, since=started, until=until):
             return {"outcome": "done", "say": _now(pending.tv, wanted, through_cast=through_cast)}
+        watch = asyncio.ensure_future(self._watch_after(pending.tv, wanted, since=started))
+        self.watching.add(watch)
+        watch.add_done_callback(self.watching.discard)
         wait = f" Ask me to wait for it to be {wanted}."
         if through_cast:
             # Woken over HDMI, a TV may take a minute to come on and may never say so in time.
@@ -187,22 +200,56 @@ class PowerService:
             say = f"I sent it, but {pending.tv.spoken} is not {wanted} yet."
         return {"outcome": "unverified", "say": say + wait}
 
-    async def _seen(self, tv: Tv, wanted: str, *, until: float) -> bool:
+    async def _seen(self, tv: Tv, wanted: str, *, since: float, until: float) -> bool:
         """Whether `tv` is seen `wanted`, looking once a second until the clock reaches `until`."""
         # RULE: a confirmed switch answers once, within the voice time
         # At most one look a second, also when the clock is not real time.
-        for _ in range(math.ceil(until - self._clock())):
+        for look in range(1, math.ceil(until - self._clock()) + 1):
             if (left := until - self._clock()) <= 0:
                 return False
+            asked = self._clock() - since
             try:
-                if await asyncio.wait_for(self._state(tv), left) == wanted:
-                    return True
+                state = await asyncio.wait_for(self._state(tv), left)
             except TimeoutError:
+                _log.info("%s: look %d, %.1f s after the yes: no answer in time", tv.key, look, asked)
                 return False
+            # RULE: a confirmed switch logs each look at the TV with its time
+            _log.info(
+                "%s: look %d, %.1f s after the yes, answered in %.1f s: %s",
+                tv.key,
+                look,
+                asked,
+                self._clock() - since - asked,
+                state or "not known",
+            )
+            if state == wanted:
+                return True
             if until - self._clock() <= 1:
                 return False
             await self._sleep(1.0)
         return False
+
+    async def _watch_after(self, tv: Tv, wanted: str, *, since: float) -> None:
+        """Log when `tv` is first seen `wanted` after its confirm answered; it only reads, says nothing."""
+        # A look every WATCH_EVERY seconds, counted, so it ends also when the clock is not real time.
+        for _ in range(int(WATCH_AFTER / WATCH_EVERY)):
+            await self._sleep(WATCH_EVERY)
+            if self._clock() - since > WATCH_AFTER:
+                break
+            try:
+                state = await asyncio.wait_for(self._state(tv), WATCH_EVERY * 2)
+            except TimeoutError:
+                continue
+            if state == wanted:
+                # RULE: a TV not seen in time is still watched, only to log when it comes
+                _log.info(
+                    "%s: seen %s %.1f s after the yes, after the answer",
+                    tv.key,
+                    wanted,
+                    self._clock() - since,
+                )
+                return
+        _log.info("%s: not seen %s within %.0f s of the yes", tv.key, wanted, WATCH_AFTER)
 
 
 def _now(tv: Tv, wanted: str, *, through_cast: bool) -> str:
