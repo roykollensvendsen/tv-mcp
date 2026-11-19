@@ -217,5 +217,5 @@ def test_the_time_for_one_answer_covers_the_longest_wait_for_a_tv_to_come_on():
     from tv_mcp.drivers import chromecast  # noqa: PLC0415
 
     # The switch through the Chromecast, then the watch, both inside one answer.
-    assert chromecast.CONNECT_TIMEOUT < power.WAKE_CONFIRM_WITHIN < server.ANSWER_WITHIN
-    assert service.WAIT_WITHIN < server.ANSWER_WITHIN
+    assert chromecast.CONNECT_TIMEOUT < power.WAKE_CONFIRM_WITHIN < server.WAITING_ANSWER_WITHIN
+    assert service.WAIT_WITHIN < server.WAITING_ANSWER_WITHIN

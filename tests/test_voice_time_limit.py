@@ -3,12 +3,13 @@
 
 Two limits apply. The Claude app waits for a tool's answer; it seemed to give
 up after 15 seconds, but the owner's calls of a minute and more came back
-(2026-11-19). Every tool answers within server.ANSWER_WITHIN, saying it carries
-on when its work is slower. claude-voice cuts a tool's work off after tv's
-[plugins.tv] timeout, and the voice then hears only "MCP tool call failed",
-with nothing to say to the owner. On 2026-11-09 switching the garage TV on did
-exactly that, at 30 seconds; the timeout is 60 since the garage TV's confirm
-waits for it to come on (2026-11-19).
+(2026-11-19). Every tool answers within server.ANSWER_WITHIN, and a wait for a
+TV within server.WAITING_ANSWER_WITHIN, saying it carries on when its work is
+slower. claude-voice cuts a tool's work off after tv's [plugins.tv] timeout,
+and the voice then hears only "MCP tool call failed", with nothing to say to
+the owner. On 2026-11-09 switching the garage TV on did exactly that, at 30
+seconds; the timeout is 60 since the garage TV's confirm waits for it to come
+on (2026-11-19).
 
 So each tool's longest path, added up from the waits it makes, has to leave
 room inside the limit. A new wait, or a longer one, goes into the sum here.
@@ -87,7 +88,8 @@ FINISHED_WITHIN = BRIDGE_LIMIT
 
 def test_a_tools_longest_wait_fits_in_the_voices_time():
     # Every tool answers by server.ANSWER_WITHIN; slower work carries on and says so.
-    assert server.ANSWER_WITHIN + MARGIN <= VOICE_LIMIT
+    assert server.ANSWER_WITHIN <= server.WAITING_ANSWER_WITHIN
+    assert server.WAITING_ANSWER_WITHIN + MARGIN <= VOICE_LIMIT
 
 
 @pytest.mark.parametrize("seconds", LONGEST.values(), ids=LONGEST.keys())

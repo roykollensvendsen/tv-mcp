@@ -12,7 +12,7 @@ import pytest
 
 from tv_mcp import service as service_module
 from tv_mcp.driver import TvInfo
-from tv_mcp.server import ANSWER_WITHIN
+from tv_mcp.server import WAITING_ANSWER_WITHIN
 from tv_mcp.service import WAIT_WITHIN, TvService
 from tv_mcp.settings import Settings, Tv
 
@@ -76,7 +76,7 @@ def test_a_wait_for_a_tv_ends_within_the_voice_time():
     waited = asyncio.run(_service(Screen("standby"), clock).wait_for("the living room", "on"))
     assert waited["reached"] is False
     assert clock.now - started <= WAIT_WITHIN
-    assert WAIT_WITHIN < ANSWER_WITHIN
+    assert WAIT_WITHIN < WAITING_ANSWER_WITHIN
 
 
 def test_a_tv_already_in_the_wanted_state_is_answered_at_once():
