@@ -34,8 +34,9 @@ EXPIRES = 30.0
 #: server.ANSWER_WITHIN, so the voice hears how it went rather than "working".
 CONFIRM_WITHIN = 10.0
 #: How long a confirm watches a TV woken through its Chromecast: the garage TV came on 25.6 s
-#: after the yes (19.11), so the voice can hear "on" in the same answer. The owner's long calls
-#: came back (19.11), and the bridge's limit for tv must be above server.ANSWER_WITHIN.
+#: after the yes (19.11), so the voice can hear "on" in the same answer. The voice app waits a
+#: minute and more for a bridge tool (19.11); the typed Claude app drops a call at about 30 s.
+#: The bridge's limit for tv must be above server.WAITING_ANSWER_WITHIN.
 WAKE_CONFIRM_WITHIN = 40.0
 #: After a confirm that could not see the switch in time, how long tv-mcp keeps looking, and how
 #: often, only to log when the TV came: that is what says how long a confirm should wait.

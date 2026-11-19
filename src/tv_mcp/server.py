@@ -32,9 +32,9 @@ INSTRUCTIONS = (
 SIMULATED = "SIMULATED TVs, not real ones: say so. "
 #: Every tool answers by then, saying it carries on when its work is slower, so a hang is heard soon.
 ANSWER_WITHIN = 12.0
-#: What a wait for a TV has instead: a confirm for the garage TV needs about 40 s, and the owner's
-#: calls of a minute and more came back (19.11). The bridge's limit for tv must stay above this,
-#: or it cuts the call off.
+#: What a wait for a TV has instead: a confirm for the garage TV needs about 40 s. The voice app
+#: waits a minute and more for a bridge tool (19.11); the typed Claude app drops a call at about
+#: 30 s (claude-voice #361). The bridge's limit for tv must stay above this, or it cuts the call off.
 # RULE: the time for one answer covers the longest wait for a TV to come on
 WAITING_ANSWER_WITHIN = 45.0
 #: The tools that wait for a TV, and when they do.
