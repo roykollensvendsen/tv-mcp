@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Each tool answers within the time the voice gives it, and finishes soon after.
 
-Two limits apply. The Claude app waits for a tool's answer; it seemed to give
-up after 15 seconds, but the owner's calls of a minute and more came back
-(2026-11-19). Every tool answers within server.ANSWER_WITHIN, and a wait for a
+Two limits apply. The client waits for a tool's answer. The voice app waits a
+minute and more for a bridge tool (2026-11-19); the typed Claude app drops a
+call at about 30 seconds (claude-voice #361), and the 15 seconds once assumed
+here was not measured on either. Every tool answers within server.ANSWER_WITHIN, and a wait for a
 TV within server.WAITING_ANSWER_WITHIN, saying it carries on when its work is
 slower. claude-voice cuts a tool's work off after tv's [plugins.tv] timeout,
 and the voice then hears only "MCP tool call failed", with nothing to say to
@@ -23,8 +24,9 @@ import pytest
 from tv_mcp import power, server, service
 from tv_mcp.drivers import chromecast, jellyfin, samsung_legacy, samsung_tizen
 
-#: How long the Claude app waits for a tool, in seconds, as far as is known: calls of a
-#: minute came back (2026-11-19). The plugin standard's rule 3 still says 15.
+#: How long the voice app waits for a bridge tool, in seconds, as far as is known: calls of a
+#: minute came back (2026-11-19). The typed Claude app drops at about 30 s (claude-voice #361),
+#: so a typed confirm for the garage TV can end unanswered. The plugin standard's rule 3 says 15.
 VOICE_LIMIT = 60.0
 #: Room kept for everything not counted: the bridge, quick calls, the network.
 MARGIN = 2.0

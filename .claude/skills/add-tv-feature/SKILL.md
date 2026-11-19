@@ -74,8 +74,9 @@ A rule (a refusal, a limit, a safety check) is one line marked
   listed in `server.WAITS_FOR_A_TV`, has `WAITING_ANSWER_WITHIN` (45 s).
   claude-voice cuts a call off at tv's `[plugins.tv]` timeout (60 s since
   19.11; 30 when left out), and the voice then hears only "MCP tool call
-  failed", with nothing to tell the owner. The Claude app was thought to give
-  up after 15 s, but calls of a minute came back (19.11). The server answers
+  failed", with nothing to tell the owner. The voice app waits a minute and
+  more for a bridge tool (19.11); the typed Claude app drops a call at about
+  30 s (claude-voice #361), so a long wait typed there can end unanswered. The server answers
   for any tool still working at its time that it carries on, and lets the
   work finish; a tool's own wait should still answer first, with a better
   sentence. A TV that is slow or asleep gets a short wait,
