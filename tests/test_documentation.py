@@ -69,3 +69,15 @@ def test_every_gate_the_readme_says_ci_runs_is_in_the_workflow():
     assert commands
     for command in commands:
         assert command in workflow, command
+
+
+def test_only_a_pull_requests_stale_run_is_stopped_and_every_other_run_finishes():
+    # One group per ref kept only one waiting run on main, so a commit between two others
+    # got no run at all (19.11). Every run that is not a pull request's is its own group.
+    workflow = (ROOT / ".github" / "workflows" / "checks.yml").read_text()
+    assert (
+        "concurrency:\n"
+        "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref"
+        " || github.run_id }}\n"
+        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+    ) in workflow

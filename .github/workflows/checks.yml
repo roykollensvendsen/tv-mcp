@@ -7,11 +7,10 @@ on:
   push:
     branches: [main]
 
-# One run per ref. On a pull request a new push cancels the run it superseded;
-# a run on main, once started, always finishes. GitHub keeps only one waiting
-# run per group, so a commit on main between two others may get no run.
+# A newer push to a pull request stops that pull request's stale run. Every
+# other run, on main, a tag or by hand, is its own group and always runs to the end.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Nothing here writes to the repository, its issues or its packages.
