@@ -1,0 +1,5 @@
+[[rule]]
+name = "a confirmed switch logs each look at the TV with its time"
+file = "src/tv_mcp/power.py"
+find = '^            _log\.info\($'
+replace = '_log.debug('

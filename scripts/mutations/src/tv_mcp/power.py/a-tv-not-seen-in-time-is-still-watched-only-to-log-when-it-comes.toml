@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV not seen in time is still watched, only to log when it comes"
+file = "src/tv_mcp/power.py"
+find = '^                _log\.info\($'
+replace = '_log.debug('
