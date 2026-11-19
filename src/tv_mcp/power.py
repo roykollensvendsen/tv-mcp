@@ -224,17 +224,27 @@ class PowerService:
             except TimeoutError:
                 _log.info("%s: look %d, %.1f s after the yes: no answer in time", tv.key, look, asked)
                 return False
-            # RULE: a confirmed switch logs each look at the TV with its time
-            _log.info(
-                "%s: look %d, %.1f s after the yes, answered in %.1f s: %s",
-                tv.key,
-                look,
-                asked,
-                self._clock() - since - asked,
-                state or "not known",
-            )
-            if state == wanted:
-                return True
+            # RULE: a look that fails during the confirm is logged, and the confirm keeps looking
+            except Exception as failure:  # noqa: BLE001 - a TV starting up may refuse; the next look may see it
+                _log.info(
+                    "%s: look %d, %.1f s after the yes: failed: %s",
+                    tv.key,
+                    look,
+                    asked,
+                    type(failure).__name__,
+                )
+            else:
+                # RULE: a confirmed switch logs each look at the TV with its time
+                _log.info(
+                    "%s: look %d, %.1f s after the yes, answered in %.1f s: %s",
+                    tv.key,
+                    look,
+                    asked,
+                    self._clock() - since - asked,
+                    state or "not known",
+                )
+                if state == wanted:
+                    return True
             if until - self._clock() <= 1:
                 return False
             await self._sleep(1.0)

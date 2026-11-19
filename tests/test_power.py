@@ -481,9 +481,9 @@ def test_a_look_that_fails_while_watching_after_the_answer_is_logged_and_the_wat
         return True
 
     async def refuses_once_then_comes_on(address):
-        if clock.now == 1011:  # the first look after the answer
+        if clock.now == 1041:  # the first look after the answer, which has 40 s for a wake
             raise OSError(refused)
-        return clock.now >= 1015
+        return clock.now >= 1045
 
     async def ticking(seconds):
         clock.now += seconds
@@ -503,7 +503,39 @@ def test_a_look_that_fails_while_watching_after_the_answer_is_logged_and_the_wat
     assert _run(confirmed_then_watched()) == [None]
     said = [record.getMessage() for record in caplog.records]
     assert said[-2:] == [
-        "garage: a look failed 11.0 s after the yes: OSError",
-        "garage: seen on 15.0 s after the yes, after the answer",
+        "garage: a look failed 41.0 s after the yes: OSError",
+        "garage: seen on 45.0 s after the yes, after the answer",
     ]
+    assert tv_driver.switched == []
+
+
+def test_a_look_that_fails_during_the_confirm_is_logged_and_the_confirm_keeps_looking(caplog):
+    # The confirm watches a wake for 40 s, the very window in which a TV starting up refuses.
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+    refused = "the TV refused the connection"
+
+    async def wakes(address):
+        return True
+
+    async def refuses_once_then_comes_on(address):
+        if clock.now == 1003:
+            raise OSError(refused)
+        return clock.now >= 1026
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, refuses_once_then_comes_on
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    caplog.set_level("INFO", logger="tv_mcp.power")
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "done"
+    assert answer["seconds"] == 26.0
+    assert "garage: look 4, 3.0 s after the yes: failed: OSError" in [r.getMessage() for r in caplog.records]
     assert tv_driver.switched == []

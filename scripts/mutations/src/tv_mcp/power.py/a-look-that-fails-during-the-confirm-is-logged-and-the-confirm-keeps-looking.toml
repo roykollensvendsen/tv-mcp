@@ -1,0 +1,5 @@
+[[rule]]
+name = "a look that fails during the confirm is logged, and the confirm keeps looking"
+file = "src/tv_mcp/power.py"
+find = '^            except Exception as failure:  # noqa: BLE001 - a TV starting up may refuse; the next look may see it$'
+replace = 'except ValueError as failure:  # noqa: BLE001 - a TV starting up may refuse; the next look may see it'
