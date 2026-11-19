@@ -1,5 +1,5 @@
 [[rule]]
 name = "the time for one answer covers the longest wait for a TV to come on"
 file = "src/tv_mcp/server.py"
-find = '^ANSWER_WITHIN = 45\.0$'
-replace = 'ANSWER_WITHIN = 12.0'
+find = '^WAITING_ANSWER_WITHIN = 45\.0$'
+replace = 'WAITING_ANSWER_WITHIN = 12.0'

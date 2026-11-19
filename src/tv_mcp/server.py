@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -29,11 +30,18 @@ INSTRUCTIONS = (
     "asking, and never try to reach a TV reported 'left alone'."
 )
 SIMULATED = "SIMULATED TVs, not real ones: say so. "
-#: Every tool answers by then. It was 12 s while the Claude app seemed to give up after about 15;
-#: the owner's calls of a minute and more came back (19.11), and a confirm for the garage TV
-#: needs about 40 s. The bridge's limit for tv must stay above this, or it cuts the call off.
+#: Every tool answers by then, saying it carries on when its work is slower, so a hang is heard soon.
+ANSWER_WITHIN = 12.0
+#: What a wait for a TV has instead: a confirm for the garage TV needs about 40 s, and the owner's
+#: calls of a minute and more came back (19.11). The bridge's limit for tv must stay above this,
+#: or it cuts the call off.
 # RULE: the time for one answer covers the longest wait for a TV to come on
-ANSWER_WITHIN = 45.0
+WAITING_ANSWER_WITHIN = 45.0
+#: The tools that wait for a TV, and when they do.
+WAITS_FOR_A_TV: dict[str, Callable[[dict[str, Any]], bool]] = {
+    "tv_power_confirm": lambda _arguments: True,
+    "tv_status": lambda arguments: arguments.get("wait_for") is not None,
+}
 #: What the voice hears when a tool is still working by then; the work carries on.
 WORKING = "That is taking a while, and it carries on. Ask again in a moment to hear how it went."
 #: What the voice hears when a TV or the library stops answering partway.
@@ -55,12 +63,15 @@ class _Guarded:
         register = self._server.tool(**options)
 
         def guard(tool: Callable[..., Awaitable[Any]]) -> Any:  # noqa: ANN401
+            signature = inspect.signature(tool)
+
             @functools.wraps(tool)
             async def answered(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
                 work = asyncio.ensure_future(tool(*args, **kwargs))
+                within = answer_within(tool.__name__, signature.bind(*args, **kwargs).arguments)
                 try:
                     # RULE: a tool still working at the deadline says it carries on
-                    answer = await asyncio.wait_for(asyncio.shield(work), ANSWER_WITHIN)
+                    answer = await asyncio.wait_for(asyncio.shield(work), within)
                 except TimeoutError:
                     if not work.done():
                         self.running.add(work)
@@ -80,6 +91,13 @@ class _Guarded:
             return register(answered)
 
         return guard
+
+
+def answer_within(name: str, arguments: dict[str, Any]) -> float:
+    """How long the tool called `name` has to answer, called with `arguments`."""
+    waits = WAITS_FOR_A_TV.get(name)
+    # RULE: only a wait for a TV gets the long answer time
+    return WAITING_ANSWER_WITHIN if waits is not None and waits(arguments) else ANSWER_WITHIN
 
 
 def _why(failure: Exception) -> str:

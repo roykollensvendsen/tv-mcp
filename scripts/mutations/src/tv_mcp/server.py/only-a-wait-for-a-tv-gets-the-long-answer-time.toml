@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a wait for a TV gets the long answer time"
+file = "src/tv_mcp/server.py"
+find = '^    return WAITING_ANSWER_WITHIN if waits is not None and waits\(arguments\) else ANSWER_WITHIN$'
+replace = 'return WAITING_ANSWER_WITHIN'

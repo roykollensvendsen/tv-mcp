@@ -281,3 +281,38 @@ def test_every_failure_says_what_to_do_next():
 
 def test_the_failures_are_found_at_all():
     assert sum(1 for _ in _failures()) > 40
+
+
+def test_only_a_wait_for_a_tv_gets_the_long_answer_time(monkeypatch):
+    # A hang anywhere else is still said to carry on after the short time (quality, #97).
+    import asyncio  # noqa: PLC0415
+
+    from tv_mcp import server  # noqa: PLC0415
+    from tv_mcp.simulator import simulated_service  # noqa: PLC0415
+
+    monkeypatch.setattr(server, "ANSWER_WITHIN", 0.01)
+    monkeypatch.setattr(server, "WAITING_ANSWER_WITHIN", WITHIN)
+    service = simulated_service()
+
+    async def slow_status(name):
+        await asyncio.sleep(0.05)
+        return []
+
+    async def slow_wait(name, wanted):
+        await asyncio.sleep(0.05)
+        return {"reached": False, "tvs": []}
+
+    service.status, service.wait_for = slow_status, slow_wait
+
+    async def both():
+        built = server.build_server(service)
+        looked = await asyncio.wait_for(built.call_tool("tv_status", {}), WITHIN)
+        waited = await asyncio.wait_for(built.call_tool("tv_status", {"tv": "x", "wait_for": "on"}), WITHIN)
+        return looked.structured_content, waited.structured_content
+
+    looked, waited = asyncio.run(both())
+    assert looked["outcome"] == "working"
+    assert waited.get("outcome") != "working"
+    assert server.answer_within("tv_power_confirm", {"token": "t"}) == server.WAITING_ANSWER_WITHIN
+    assert server.answer_within("tv_status", {"tv": None}) == server.ANSWER_WITHIN
+    assert server.answer_within("tv_play", {"title": "x"}) == server.ANSWER_WITHIN
