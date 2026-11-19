@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Waits on another process that end in a failure of the waiting test, never in a hang.
 
-No limit is put on a test or a run from outside (Roy's rule). Each wait inside a test carries
+No limit is put on a test or a run from outside (the owner's rule). Each wait inside a test carries
 its own bound instead, so a child that never answers fails that one test, and a mutant that
 hangs counts as killed the way one that crashes does.
 """
