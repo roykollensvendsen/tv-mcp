@@ -468,3 +468,42 @@ def test_watching_after_the_answer_gives_up_after_its_bound(caplog):
     said = [record.getMessage() for record in caplog.records]
     assert said[-1] == "garage: not seen on within 90 s of the yes"
     assert tv_driver.switched == []
+
+
+def test_a_look_that_fails_while_watching_after_the_answer_is_logged_and_the_watch_goes_on(caplog):
+    # A TV starting up may refuse a connection in exactly the window the watch is there to measure.
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+    refused = "the TV refused the connection"
+
+    async def wakes(address):
+        return True
+
+    async def refuses_once_then_comes_on(address):
+        if clock.now == 1011:  # the first look after the answer
+            raise OSError(refused)
+        return clock.now >= 1015
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    cast.wake_screen, cast.screen_on = wakes, refuses_once_then_comes_on
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    caplog.set_level("INFO", logger="tv_mcp.power")
+
+    async def confirmed_then_watched():
+        await power.confirm("token-0")
+        return await asyncio.gather(*power.watching, return_exceptions=True)
+
+    assert _run(confirmed_then_watched()) == [None]
+    said = [record.getMessage() for record in caplog.records]
+    assert said[-2:] == [
+        "garage: a look failed 11.0 s after the yes: OSError",
+        "garage: seen on 15.0 s after the yes, after the answer",
+    ]
+    assert tv_driver.switched == []
