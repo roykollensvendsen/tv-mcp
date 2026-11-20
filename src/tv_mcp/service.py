@@ -92,6 +92,9 @@ GRAB_WITHIN = 180.0
 #: Seconds after such a wake in which a TV not on yet is said to be on its way rather than off;
 #: the garage TV came on 25.6 s after the yes (19.11), and its watch gives up at 90 s.
 COMING_ON_FOR = 90.0
+#: Seconds after such a wake in which a TV still not on is said to have probably not come on;
+#: after that a status says only what it sees. Its own figure, though today the same as GRAB_WITHIN.
+NOT_ON_SAID_FOR = 180.0
 #: Seconds to wait before looking again whether the Chromecast took the screen back.
 GRAB_LOOK = 2.0
 #: Seconds the second look and the second send get together, so the voice still has its answer.
@@ -378,7 +381,7 @@ class TvService:
         if ago <= COMING_ON_FOR:
             # RULE: a TV still coming on is said to be on its way, not off
             report["coming_on"] = round(ago)
-        elif ago <= GRAB_WITHIN:
+        elif ago <= NOT_ON_SAID_FOR:
             # RULE: a TV asked to come on that did not is said to have probably failed
             report["not_on_after"] = round(ago)
 
