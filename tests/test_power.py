@@ -539,3 +539,74 @@ def test_a_look_that_fails_during_the_confirm_is_logged_and_the_confirm_keeps_lo
     assert answer["seconds"] == 26.0
     assert "garage: look 4, 3.0 s after the yes: failed: OSError" in [r.getMessage() for r in caplog.records]
     assert tv_driver.switched == []
+
+
+def _garage_whose_screen_answers(screen_on):
+    clock = Clock()
+    tv_driver = PowerDriver("off")
+    cast = CastWithCec(tv_driver)
+
+    async def wakes(address):
+        return True
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    async def off(address):
+        return False
+
+    cast.wake_screen, cast.screen_on = wakes, off
+    service = TvService(
+        Settings(tvs=(GARAGE,)), drivers={tv_driver.key: tv_driver, cast.key: cast}, listen=_no_listen
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+    _run(power.request("on", "the garage"))
+    cast.screen_on = screen_on(clock)  # from the yes on
+    return clock, tv_driver, power
+
+
+def test_a_fault_in_the_code_seen_three_looks_in_a_row_stops_the_confirm_looking(caplog):
+    # A bug, not a TV starting up: looking 40 s longer would only keep the voice waiting.
+    bug = "a bug, not the TV"
+
+    def broken(_clock):
+        calls = []
+
+        async def screen_on(address):
+            calls.append(address)
+            if len(calls) == 1:  # the yes checks once that nothing changed since the question
+                return False
+            raise AttributeError(bug)
+
+        return screen_on
+
+    _clock, tv_driver, power = _garage_whose_screen_answers(broken)
+    caplog.set_level("INFO", logger="tv_mcp.power")
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] != "done"
+    assert answer["seconds"] == 2.0  # three looks, not forty
+    said = [r.getMessage() for r in caplog.records]
+    assert "garage: the same fault 3 looks in a row, stopped looking: AttributeError" in said
+    assert tv_driver.switched == []
+
+
+def test_a_tv_that_refuses_three_looks_in_a_row_is_still_watched_until_it_comes_on():
+    # A refused connection is the TV starting up, however often it happens.
+    refused = "the TV refused the connection"
+
+    def refuses_then_comes_on(clock):
+        calls = []
+
+        async def screen_on(address):
+            calls.append(address)
+            if 2 <= len(calls) <= 4:  # the first three looks after the yes
+                raise ConnectionRefusedError(refused)
+            return clock.now >= 1026
+
+        return screen_on
+
+    _clock, tv_driver, power = _garage_whose_screen_answers(refuses_then_comes_on)
+    answer = _run(power.confirm("token-0"))
+    assert answer["outcome"] == "done"
+    assert answer["seconds"] == 26.0
+    assert tv_driver.switched == []
