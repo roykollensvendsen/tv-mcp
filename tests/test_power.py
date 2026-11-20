@@ -583,8 +583,14 @@ def test_a_fault_in_the_code_seen_three_looks_in_a_row_stops_the_confirm_looking
     _clock, tv_driver, power = _garage_whose_screen_answers(broken)
     caplog.set_level("INFO", logger="tv_mcp.power")
     answer = _run(power.confirm("token-0"))
-    assert answer["outcome"] != "done"
-    assert answer["seconds"] == 2.0  # three looks, not forty
+    # The switch was sent and not seen, so the voice says the TV is starting and when to ask again.
+    assert answer == {
+        "outcome": "starting",
+        "say": "I asked the garage to switch on through its Chromecast; it takes about half a minute"
+        " to come on, and the Chromecast may take the screen."
+        " Ask me again in half a minute whether it is on.",
+        "seconds": 2.0,  # three looks, not forty
+    }
     said = [r.getMessage() for r in caplog.records]
     assert "garage: the same fault 3 looks in a row, stopped looking: AttributeError" in said
     assert tv_driver.switched == []
