@@ -103,8 +103,11 @@ def test_a_service_no_page_lists_is_not_found_and_a_page_that_fails_is_skipped()
     assert len(pages) == samsung_legacy.PAGES
 
 
-async def _tv_that_answers(answer, received):
-    """A remote port that answers "may I?" with `answer` once, then keeps what it is sent."""
+async def _tv_that_answers(answer, received, heard):
+    """A remote port that answers "may I?" with `answer` once, then keeps what comes next.
+
+    What comes next is the key, or b"" once tv-mcp closes the connection; `heard` is set then.
+    """
 
     async def serve(reader, writer):
         await reader.read(256)
@@ -113,6 +116,7 @@ async def _tv_that_answers(answer, received):
         writer.write(frame + len(answer).to_bytes(2, "little") + answer)
         await writer.drain()
         received.append(await reader.read(256))
+        heard.set()
         writer.close()
 
     server = await asyncio.start_server(serve, "127.0.0.1", 0)
@@ -123,13 +127,11 @@ def _press(answer):
     received = []
 
     async def run():
-        server, port = await _tv_that_answers(answer, received)
+        heard = asyncio.Event()
+        server, port = await _tv_that_answers(answer, received, heard)
         async with server:
             pressed = await samsung_legacy._press("127.0.0.1", "KEY_MUTE", 0.5, port=port)  # noqa: SLF001 - no TV
-            for _ in range(20):
-                if received:
-                    break
-                await asyncio.sleep(0.01)
+            await asyncio.wait_for(heard.wait(), WITHIN)  # the server has seen the key, or the close
             return pressed
 
     return asyncio.run(asyncio.wait_for(run(), WITHIN)), received
@@ -144,4 +146,4 @@ def test_a_key_is_sent_once_the_tv_lets_the_remote_in():
 def test_a_remote_the_tv_neither_lets_in_nor_refuses_sends_no_key():
     pressed, received = _press(b"\x65\x00")
     assert pressed is False
-    assert received in ([], [b""])
+    assert received == [b""]  # the connection closed with no key sent
