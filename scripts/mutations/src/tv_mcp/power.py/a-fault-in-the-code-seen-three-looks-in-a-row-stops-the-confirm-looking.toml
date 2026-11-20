@@ -1,0 +1,5 @@
+[[rule]]
+name = "a fault in the code seen three looks in a row stops the confirm looking"
+file = "src/tv_mcp/power.py"
+find = '^                if not isinstance\(failure, OSError\) and len\(faults\) >= SAME_FAULT_LOOKS:$'
+replace = 'if False:'

@@ -42,6 +42,9 @@ WAKE_CONFIRM_WITHIN = 40.0
 #: often, only to log when the TV came: that is what says how long a confirm should wait.
 WATCH_AFTER = 90.0
 WATCH_EVERY = 2.0
+#: How many looks in a row may fail with the same fault in the code, not a refused connection,
+#: before the confirm stops looking: forty seconds more would only keep the voice waiting.
+SAME_FAULT_LOOKS = 3
 #: How long a TV woken through its Chromecast takes to come on, as the voice says it, and
 #: when to ask again; measured on the garage TV on 19.11 at 25.6 s from the yes.
 COMING_ON = "about half a minute"
@@ -215,6 +218,7 @@ class PowerService:
         """Whether `tv` is seen `wanted`, looking once a second until the clock reaches `until`."""
         # RULE: a confirmed switch answers once, within the voice time
         # At most one look a second, also when the clock is not real time.
+        faults: list[type[BaseException]] = []
         for look in range(1, math.ceil(until - self._clock()) + 1):
             if (left := until - self._clock()) <= 0:
                 return False
@@ -233,7 +237,18 @@ class PowerService:
                     asked,
                     type(failure).__name__,
                 )
+                faults = [*faults, type(failure)] if type(failure) in faults else [type(failure)]
+                # RULE: a fault in the code seen three looks in a row stops the confirm looking
+                if not isinstance(failure, OSError) and len(faults) >= SAME_FAULT_LOOKS:
+                    _log.warning(
+                        "%s: the same fault %d looks in a row, stopped looking: %s",
+                        tv.key,
+                        len(faults),
+                        type(failure).__name__,
+                    )
+                    return False
             else:
+                faults = []
                 # RULE: a confirmed switch logs each look at the TV with its time
                 _log.info(
                     "%s: look %d, %.1f s after the yes, answered in %.1f s: %s",
