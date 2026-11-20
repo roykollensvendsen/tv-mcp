@@ -360,3 +360,63 @@ def test_a_video_slow_to_start_gets_an_answer_in_time_and_keeps_starting(monkeyp
     assert answer["outcome"] == "starting"
     assert "STAR WARS Original Trailer" in answer["say"]
     assert played == [("living-room", "screen-1", TRAILER.id)]
+
+
+def test_a_tv_whose_driver_cannot_show_youtube_is_said_as_that_with_what_to_try():
+    class NoYouTube(YouTubeTv):
+        youtube_screen = None
+
+    lounge = Lounge()
+    answer = asyncio.run(
+        _service(Videos([TRAILER]), lounge, NoYouTube()).play_youtube("star wars trailer", "the living room")
+    )
+    assert answer == {
+        "outcome": "refused",
+        "say": "The living room cannot show YouTube from here. Try another TV.",
+    }
+    assert lounge.played == []
+
+
+def test_a_search_youtube_does_not_answer_in_time_is_said_with_what_to_do(monkeypatch):
+    monkeypatch.setattr(service_module, "YOUTUBE_WAIT", 0.01)
+    never = asyncio.Event()  # never set: the search hangs until play_youtube gives up on it
+
+    class Silent(Videos):
+        async def search(self, words):
+            await never.wait()
+
+    driver, lounge = YouTubeTv(), Lounge()
+    answer = asyncio.run(
+        asyncio.wait_for(
+            _service(Silent([]), lounge, driver).play_youtube("star wars trailer", "the living room"), WITHIN
+        )
+    )
+    assert answer == {
+        "outcome": "refused",
+        "say": "YouTube did not answer the search for 'star wars trailer' in time. Try again in a moment.",
+    }
+    assert (driver.asked, lounge.played) == ([], [])
+
+
+def test_a_search_that_finds_nothing_says_so_and_opens_nothing():
+    driver, lounge = YouTubeTv(), Lounge()
+    answer = asyncio.run(_service(Videos([]), lounge, driver).play_youtube("zzqx", "the living room"))
+    assert answer == {"outcome": "refused", "say": "Found nothing on YouTube for 'zzqx'. Try other words."}
+    assert (driver.asked, lounge.played) == ([], [])
+
+
+def test_a_tv_that_fails_while_opening_youtube_gets_a_refusal_not_an_error():
+    class Breaks(YouTubeTv):
+        async def youtube_screen(self, address):
+            message = "the TV hung up"
+            raise OSError(message)
+
+    lounge = Lounge()
+    answer = asyncio.run(
+        _service(Videos([TRAILER]), lounge, Breaks()).play_youtube(TRAILER.id, "the living room")
+    )
+    assert answer == {
+        "outcome": "refused",
+        "say": "YouTube did not open on the living room. Check that it is on, and try again.",
+    }
+    assert lounge.played == []
