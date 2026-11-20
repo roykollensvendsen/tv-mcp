@@ -8,6 +8,11 @@ ends; a killed run never gets that far, so the next run removes any such folder 
 lock nobody holds (`scripts/held_folder.py`). pytest's own sweep is not relied on: it
 works on a folder every project on the machine shares.
 
+Of the cleanup checklist's designs (new-plugin-v8.md, points 1 and 3), this is A2, the
+renamed lock file, copied from the bridge's `held_folder.py`. The folder is made at its
+final random name, its lock is made and locked under another name and then renamed, and a
+folder with no lock counts as left behind only after an hour.
+
 The run also fails if a test changed the rule check's real recovery file.
 
 `scripts/mutate.py` keeps the file it is mutating there while the suite runs. A
