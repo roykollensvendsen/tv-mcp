@@ -238,7 +238,7 @@ def test_a_chromecast_that_cannot_wake_its_tv_is_named_as_what_did_not_answer():
     answer = asyncio.run(answered())
     assert answer["outcome"] == "refused"
     assert answer["say"] == (
-        "The Chromecast in the garage did not answer, so it could not wake the TV."
+        "The Chromecast for the garage did not answer, so it could not wake the TV."
         " Check that the Chromecast has power and is on the Wi-Fi, and try again."
     )
     assert tv_driver.switched == []

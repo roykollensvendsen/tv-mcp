@@ -199,9 +199,10 @@ class PowerService:
                 self._pending = pending
             say = f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
             # RULE: a Chromecast that cannot wake its TV is named as what did not answer
-            if through_cast:
+            # Only a TV with an address is woken through its Chromecast; one without is switched otherwise.
+            if through_cast and pending.tv.address:
                 say = (
-                    f"The Chromecast in {pending.tv.spoken} did not answer, so it could not wake the TV."
+                    f"The Chromecast for {pending.tv.spoken} did not answer, so it could not wake the TV."
                     " Check that the Chromecast has power and is on the Wi-Fi, and try again."
                 )
             return _refused(say)

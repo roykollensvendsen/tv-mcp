@@ -1,5 +1,5 @@
 [[rule]]
 name = "a Chromecast that cannot wake its TV is named as what did not answer"
 file = "src/tv_mcp/power.py"
-find = '            if through_cast:'
+find = '            if through_cast and pending\.tv\.address:'
 replace = 'if False:'
