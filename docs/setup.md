@@ -94,9 +94,10 @@ On each Samsung TV, as its model file in `src/tv_mcp/models/` says: switch on *I
 *Power On with Mobile*. A TV the owner wants left alone gets `hands_off = true` in step A
 instead, and then no tool sends it anything.
 
-tv-mcp has no pairing command. A TV is paired the first time tv-mcp uses its remote, which is
-the first voice command that changes something on it, such as opening an app. So do this after
-step C, standing at the TV with it switched on: ask the voice for that command. The TV shows
+tv-mcp has no pairing command. A TV is paired the first time tv-mcp presses a key on its
+remote: pausing, resuming or stopping what plays, closing an app, changing the input, or power.
+Opening an app needs no pairing, so it does not pair. So do this after step C, standing at the
+TV with something playing: ask the voice to pause it, the least that changes on the screen. The TV shows
 *Allow* for "tv-mcp"; choose it. tv-mcp keeps the pairing in `~/.config/tv-mcp/<key>-token`,
 where `<key>` is the TV's table name in step A.
 
