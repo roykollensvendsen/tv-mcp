@@ -202,6 +202,10 @@ jobs:
       - name: No temporary file left behind
         # The voice plugins' shared check (claude-voice packages/voice-checks), rule R24.
         run: uv run voice-checks temp-files
+      - name: The setup guide can be followed
+        # docs/setup.md has a Check: for every step and marks the owner's, and the README's
+        # step list is made from it (voice-checks docs).
+        run: uv run voice-checks docs
       - name: The rules that guard the rules
         # Coverage is measured and printed, with no threshold yet: a number
         # picked before there is data is a guess with a gate on it.
