@@ -7,6 +7,9 @@ standard (claude-voice docs/plugin-standard.md) that day, and this follows it.
 It takes over claude-voice's
 [ADR-CV-009](https://github.com/roykollensvendsen/claude-voice/blob/main/decisions/ADR-CV-009-main-keeps-the-quality-levels.md),
 accepted there the same day, and adapts it to this repository.
+Its line on `quality.json` and the time budget is replaced by claude-voice's
+[ADR-CV-021](https://github.com/roykollensvendsen/claude-voice/blob/main/decisions/ADR-CV-021-the-test-suite-has-no-time-cap.md)
+(24.11): the suite's time is shown and judged by nothing, and `quality.json` is gone.
 
 ## Context
 
@@ -56,8 +59,8 @@ main measured for the commit it is merged onto, and fails only when a level is
 worse, unless a `Ratchet-Exception:` line in the pull request names it. When
 those levels are missing, for a run that was cancelled or has expired, the check
 measures that commit itself in a copy of it: slower, and never skipped.
-`quality.json` keeps only the suite's time budget, a limit set by hand rather
-than a level, so no pull request needs to change it to pass. Main only
+How long the suite takes is shown and judged by nothing (ADR-CV-021), so no
+pull request needs to change anything to pass. Main only
 measures; it does not compare, because every change on it already passed the
 check against the main before it.
 
@@ -80,6 +83,6 @@ check against the main before it.
 
 ## Related
 
-claude-voice's ADR-CV-009, `scripts/ratchet.py`, `quality.json`, the `quality`
+claude-voice's ADR-CV-009 and ADR-CV-021, `scripts/ratchet.py`, the `quality`
 job in `.github/workflows/checks.yml`, and "The quality ratchet" in
 [`CONTRIBUTING.md`](../CONTRIBUTING.md#the-quality-ratchet).

@@ -23,7 +23,6 @@ measure the same thing locally, fix the worst cell test-first, land it.
 | Copied code | under 3 % of lines | up to 6 % | more |
 | Lint and type errors | 0 | | any |
 | Import cycles | 0 | any | |
-| Time the tests take | inside the budget | inside budget plus tolerance | over |
 | Checks on main | passing | running | failed |
 
 The limits live in the bridge, not here: `MEASURES` in claude-voice's
@@ -62,8 +61,8 @@ The complexity, cycle, layer and duplication counts are functions in
 The `measure` output lists the worst function's score per module, so open the
 module with the highest number first. The layer count is there for the page
 and stays at nought: `tests/test_layers.py` refuses any breach outright, so one
-turns the suite red. The time budget is the one thing in
-`quality.json`, and it changes only by hand, with the owner's yes.
+turns the suite red. How long the suite takes is shown and judged by nothing
+(claude-voice's ADR-CV-021).
 
 ## 3. Fix the worst cell, test-first
 
@@ -124,10 +123,10 @@ appear more than once in `src/`, ignoring indentation. Put the block in one
 function both places call, with the tests green before and after, as
 `refactor:`.
 
-**Tests over their budget.** Find the slowest with `--durations=15`. The usual
-cause is a real wait: a sleep, a timeout, a subprocess. Make the wait
-injectable and pass a fake clock or a short timeout in the test. Raising the
-budget is the owner's decision, not a fix.
+**Slow tests.** Nothing fails on time, but a slow suite is still worth fixing.
+Find the slowest with `--durations=15`. The usual cause is a real wait: a sleep,
+a timeout, a subprocess. Make the wait injectable and pass a fake clock or a
+short timeout in the test.
 
 **Lint, type errors or a cycle.** Fix them as they are reported; a cycle is
 broken the same way as a layer breach, by moving shared code down.
