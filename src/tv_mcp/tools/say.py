@@ -25,7 +25,7 @@ def tv_lines(reports: list[dict[str, Any]]) -> str:
             lines.append(
                 f"{_capital(name)} is {report['state']}{_screen(report)}{_input(report)}"
                 f"{_playing(report.get('playing'))}"
-                f"{_sound(report)}.{_again(report)}"
+                f"{_sound(report)}.{_again(report)}{_partial(report)}"
             )
     return " ".join(lines)
 
@@ -60,6 +60,13 @@ def _screen(report: dict[str, Any]) -> str:
 def _again(report: dict[str, Any]) -> str:
     """What to do when a TV asked to switch on did not come on."""
     return " Ask me to switch it on again." if report.get("not_on_after") is not None else ""
+
+
+def _partial(report: dict[str, Any]) -> str:
+    """That the rest of a TV slow to finish was not read, and how to get it."""
+    if not report.get("partial"):
+        return ""
+    return f" I could not read the rest in time. Ask about {report['tv']} on its own in a moment."
 
 
 def _input(report: dict[str, Any]) -> str:
