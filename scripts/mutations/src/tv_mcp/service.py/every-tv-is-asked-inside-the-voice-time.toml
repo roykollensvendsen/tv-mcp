@@ -1,0 +1,5 @@
+[[rule]]
+name = "every TV is asked inside the voice time"
+file = "src/tv_mcp/service.py"
+find = 'TV_ANSWER_WITHIN = 9\.0'
+replace = 'TV_ANSWER_WITHIN = 11.0'

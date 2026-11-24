@@ -86,6 +86,16 @@ SUBTITLES_KEPT = 4
 WAIT_WITHIN = 40.0
 #: How long status waits to hear which input a TV shows, before saying what it knows.
 INPUT_READ_WAIT = 3.0
+#: How long status waits for any one TV before saying it did not answer in time. The TVs are
+#: asked side by side, so a status for all of them answers within this too: inside
+#: server.ANSWER_WITHIN, with room to put the sentences together. With every TV off, the garage
+#: TV took 8 s and the other two 3 s each (24.11), which one after the other passed 12 s.
+# RULE: every TV is asked inside the voice time
+TV_ANSWER_WITHIN = 9.0
+#: How long status waits for the library to say what plays, before saying the rest without it.
+LIBRARY_WAIT = 4.0
+#: What status says of a TV that did not answer within TV_ANSWER_WITHIN.
+NO_ANSWER = "did not answer in time"
 #: Seconds after a wake through the Chromecast in which it may still take the screen; the
 #: garage TV takes about a minute to come on (2026-11-10), and the Chromecast takes it after.
 GRAB_WITHIN = 180.0
@@ -281,19 +291,45 @@ class TvService:
                 tvs = [find_tv(self.settings, name)]
             except (UnknownTvError, AmbiguousTvError) as refusal:
                 return [{"tv": name, "state": "refused", "say": str(refusal)}]
-        reports = [await self._read(tv) for tv in tvs]
-        sessions = await self.library.sessions() if self.library else []
-        for tv, report in zip(tvs, reports, strict=True):
-            # RULE: a TV that does not answer is not asked what it plays or how loud it is
-            if not tv.hands_off and report["state"] != UNREACHABLE:
-                await self._add_playing(tv, report, sessions)
-                await self._add_sound(tv, report)
-            await self._add_screen(tv, report)
-            if not tv.hands_off:
-                await self._add_art(tv, report)
-            if not tv.hands_off:
-                await self._add_input(tv, report)
-        return reports
+        sessions = asyncio.ensure_future(self._sessions())
+        try:
+            # RULE: each TV is asked side by side, so a slow one holds up none
+            return list(await asyncio.gather(*(self._within(tv, sessions) for tv in tvs)))
+        finally:
+            sessions.cancel()
+
+    async def _sessions(self) -> list[Session]:
+        """What the library says plays where; nothing, when it has no library or is slow to say."""
+        if self.library is None:
+            return []
+        try:
+            return await asyncio.wait_for(self.library.sessions(), LIBRARY_WAIT)
+        except TimeoutError:
+            return []
+
+    async def _within(self, tv: Tv, sessions: asyncio.Future[list[Session]]) -> dict[str, Any]:
+        """The report for `tv`, or that it did not answer, within TV_ANSWER_WITHIN."""
+        try:
+            # RULE: a TV that does not answer in time is said as that
+            return await asyncio.wait_for(self._full_report(tv, sessions), TV_ANSWER_WITHIN)
+        except TimeoutError:
+            name = tv.spoken
+            say = f"{_capital(name)} {NO_ANSWER}. Ask about {name} on its own in a moment."
+            return {**_known(tv), "state": NO_ANSWER, "say": say}
+
+    async def _full_report(self, tv: Tv, sessions: asyncio.Future[list[Session]]) -> dict[str, Any]:
+        """Whether `tv` is on, and what it plays, how loud, on which input, and whether it shows art."""
+        report = await self._read(tv)
+        # RULE: a TV that does not answer is not asked what it plays or how loud it is
+        if not tv.hands_off and report["state"] != UNREACHABLE:
+            await self._add_playing(tv, report, await asyncio.shield(sessions))
+            await self._add_sound(tv, report)
+        await self._add_screen(tv, report)
+        if not tv.hands_off:
+            await self._add_art(tv, report)
+        if not tv.hands_off:
+            await self._add_input(tv, report)
+        return report
 
     async def wait_for(self, name: str | None, wanted: str) -> dict[str, Any]:
         """Status of the TV called `name`, looked at once a second until it is `wanted`, for a while."""

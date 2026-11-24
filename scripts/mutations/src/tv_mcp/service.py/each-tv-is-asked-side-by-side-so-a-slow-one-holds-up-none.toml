@@ -1,0 +1,5 @@
+[[rule]]
+name = "each TV is asked side by side, so a slow one holds up none"
+file = "src/tv_mcp/service.py"
+find = '            return list\(await asyncio\.gather\(\*\(self\._within\(tv, sessions\) for tv in tvs\)\)\)'
+replace = 'return [await self._within(tv, sessions) for tv in tvs]'
