@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV that does not answer in time is said as that"
+file = "src/tv_mcp/service.py"
+find = '            return await asyncio\.wait_for\(self\._full_report\(tv, sessions\), TV_ANSWER_WITHIN\)'
+replace = 'return await self._full_report(tv, sessions)'
