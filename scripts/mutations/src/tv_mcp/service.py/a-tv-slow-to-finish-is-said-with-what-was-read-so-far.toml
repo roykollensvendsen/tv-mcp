@@ -1,0 +1,5 @@
+[[rule]]
+name = "a TV slow to finish is said with what was read so far"
+file = "src/tv_mcp/service.py"
+find = '            if "state" in so_far:'
+replace = 'if False:'

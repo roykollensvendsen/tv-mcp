@@ -308,18 +308,27 @@ class TvService:
             return []
 
     async def _within(self, tv: Tv, sessions: asyncio.Future[list[Session]]) -> dict[str, Any]:
-        """The report for `tv`, or that it did not answer, within TV_ANSWER_WITHIN."""
+        """The report for `tv` within TV_ANSWER_WITHIN: what was read by then, or that it did not answer."""
+        so_far: dict[str, Any] = {}
         try:
             # RULE: a TV that does not answer in time is said as that
-            return await asyncio.wait_for(self._full_report(tv, sessions), TV_ANSWER_WITHIN)
+            return await asyncio.wait_for(self._full_report(tv, sessions, so_far), TV_ANSWER_WITHIN)
         except TimeoutError:
+            # RULE: a TV slow to finish is said with what was read so far
+            if "state" in so_far:
+                return {**so_far, "partial": True}
             name = tv.spoken
             say = f"{_capital(name)} {NO_ANSWER}. Ask about {name} on its own in a moment."
             return {**_known(tv), "state": NO_ANSWER, "say": say}
 
-    async def _full_report(self, tv: Tv, sessions: asyncio.Future[list[Session]]) -> dict[str, Any]:
-        """Whether `tv` is on, and what it plays, how loud, on which input, and whether it shows art."""
-        report = await self._read(tv)
+    async def _full_report(
+        self, tv: Tv, sessions: asyncio.Future[list[Session]], report: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Whether `tv` is on, and what it plays, how loud, on which input, and whether it shows art.
+
+        Fills `report` as it goes, so a caller that stops waiting still has what was read.
+        """
+        report.update(await self._read(tv))
         # RULE: a TV that does not answer is not asked what it plays or how loud it is
         if not tv.hands_off and report["state"] != UNREACHABLE:
             await self._add_playing(tv, report, await asyncio.shield(sessions))
