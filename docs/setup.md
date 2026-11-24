@@ -11,8 +11,10 @@ plugin. What each tool does, and why it is shaped as it is, is in [design.md](de
 Some steps wait for one only the owner can do. Those are at the end, under their own heading,
 and each agent step names the one it waits for. Ask the owner, then go on when its check passes.
 
-Nothing in this guide switches a TV on or off, makes a sound, or shows anything on a screen.
-Never do any of those while setting up, unless the owner says yes to that one action first.
+No agent step switches a TV on or off, makes a sound, or shows anything on a screen. Step 3
+waits until each TV is paired, because a TV with no pairing can put an *Allow* prompt on its
+screen, a Frame in art mode even when it is only asked how it is. Never do any of those while
+setting up, unless the owner says yes to that one action first.
 
 ## What you need first
 
@@ -85,15 +87,20 @@ twice.
 ### B. Let each TV take orders from this computer
 
 <!-- owner -->
-Why: it is done at the TV, with its remote, and the TV asks the owner to allow a new device on
-its own screen.
+Why: it is done at the TV, with its remote, and the TV asks on its own screen whether this
+computer may control it. Only the owner can answer that.
 
 On each Samsung TV, as its model file in `src/tv_mcp/models/` says: switch on *IP Remote* and
-*Power On with Mobile*, and choose *Allow* when the TV asks whether this computer may control
-it. A TV the owner wants left alone gets `hands_off = true` in step A instead, and then no tool
-sends it anything.
+*Power On with Mobile*. A TV the owner wants left alone gets `hands_off = true` in step A
+instead, and then no tool sends it anything.
 
-Check: in step 3, `uv run tv-mcp status` names the TV with a state other than `refused`.
+tv-mcp has no pairing command. A TV is paired the first time tv-mcp uses its remote, which is
+the first voice command that changes something on it, such as opening an app. So do this after
+step C, standing at the TV with it switched on: ask the voice for that command. The TV shows
+*Allow* for "tv-mcp"; choose it. tv-mcp keeps the pairing in `~/.config/tv-mcp/<key>-token`,
+where `<key>` is the TV's table name in step A.
+
+Check: `ls ~/.config/tv-mcp/<key>-token` prints the file for each TV that is not hands off.
 
 ### C. Add the plugin to claude-voice and approve it
 

@@ -74,15 +74,20 @@ twice.
 
 #### B. Let each TV take orders from this computer
 
-Why: it is done at the TV, with its remote, and the TV asks the owner to allow a new device on
-its own screen.
+Why: it is done at the TV, with its remote, and the TV asks on its own screen whether this
+computer may control it. Only the owner can answer that.
 
 On each Samsung TV, as its model file in `src/tv_mcp/models/` says: switch on *IP Remote* and
-*Power On with Mobile*, and choose *Allow* when the TV asks whether this computer may control
-it. A TV the owner wants left alone gets `hands_off = true` in step A instead, and then no tool
-sends it anything.
+*Power On with Mobile*. A TV the owner wants left alone gets `hands_off = true` in step A
+instead, and then no tool sends it anything.
 
-Check: in step 3, `uv run tv-mcp status` names the TV with a state other than `refused`.
+tv-mcp has no pairing command. A TV is paired the first time tv-mcp uses its remote, which is
+the first voice command that changes something on it, such as opening an app. So do this after
+step C, standing at the TV with it switched on: ask the voice for that command. The TV shows
+*Allow* for "tv-mcp"; choose it. tv-mcp keeps the pairing in `~/.config/tv-mcp/<key>-token`,
+where `<key>` is the TV's table name in step A.
+
+Check: `ls ~/.config/tv-mcp/<key>-token` prints the file for each TV that is not hands off.
 
 #### C. Add the plugin to claude-voice and approve it
 
