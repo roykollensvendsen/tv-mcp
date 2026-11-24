@@ -219,3 +219,26 @@ def test_the_time_for_one_answer_covers_the_longest_wait_for_a_tv_to_come_on():
     # The switch through the Chromecast, then the watch, both inside one answer.
     assert chromecast.CONNECT_TIMEOUT < power.WAKE_CONFIRM_WITHIN < server.WAITING_ANSWER_WITHIN
     assert service.WAIT_WITHIN < server.WAITING_ANSWER_WITHIN
+
+
+def test_a_chromecast_that_cannot_wake_its_tv_is_named_as_what_did_not_answer():
+    clock = Clock()
+    service, tv_driver, cast, ticking = _garage(clock)
+
+    async def gone(address):
+        return False
+
+    cast.wake_screen = gone
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["outcome"] == "refused"
+    assert answer["say"] == (
+        "The Chromecast in the garage did not answer, so it could not wake the TV."
+        " Check that the Chromecast has power and is on the Wi-Fi, and try again."
+    )
+    assert tv_driver.switched == []
