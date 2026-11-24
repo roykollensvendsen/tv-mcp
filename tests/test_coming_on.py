@@ -8,6 +8,7 @@ on its way rather than off. Nothing here switches anything: power is sent once, 
 """
 
 import asyncio
+from dataclasses import replace
 
 from test_power import GARAGE, CastWithCec, Clock, PowerDriver, _no_listen
 
@@ -242,3 +243,33 @@ def test_a_chromecast_that_cannot_wake_its_tv_is_named_as_what_did_not_answer():
         " Check that the Chromecast has power and is on the Wi-Fi, and try again."
     )
     assert tv_driver.switched == []
+
+
+def test_a_tv_set_to_wake_by_hdmi_but_with_no_address_is_not_said_to_have_a_silent_chromecast():
+    # With no address the Chromecast is never tried; the TV's own switcher is, so it alone is blamed.
+    clock = Clock()
+    tv_driver, cast = PowerDriver("off"), CastWithCec(PowerDriver("off"))
+
+    async def refuses(tv, *, on):
+        return False
+
+    async def ticking(seconds):
+        clock.now += seconds
+
+    tv_driver.switch = refuses
+    service = TvService(
+        Settings(tvs=(replace(GARAGE, address=None),)),
+        drivers={tv_driver.key: tv_driver, cast.key: cast},
+        listen=_no_listen,
+        clock=clock,
+        sleep=ticking,
+    )
+    power = PowerService(service, clock=clock, new_token=lambda: "token-0", sleep=ticking)
+
+    async def answered():
+        await power.request("on", "the garage")
+        return await power.confirm("token-0")
+
+    answer = asyncio.run(answered())
+    assert answer["say"] == "The garage did not answer. Check that it is on, and try again."
+    assert cast.woken == []
