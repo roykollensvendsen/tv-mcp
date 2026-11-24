@@ -65,7 +65,7 @@ worse, so the ratchet compares these levels with the ones main has reached:
 | `layer_violations`: imports that cross the layers, and modules with no layer | lower |
 | `duplication`: the share of non-blank source lines, in percent, in a block of six or more lines that appears more than once, ignoring indentation | lower |
 | `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it; a new module keeps every function at 15 or below | lower |
-| `test_seconds`: how long the suite takes, against `test_budget` | inside the budget plus its tolerance |
+| `test_seconds`: how long the suite takes, in seconds on the clock | shown, never judged |
 
 The layers are counted so that the code-health page can show them, but the
 count stays at nought: `tests/test_layers.py` refuses any import from the wrong
@@ -85,8 +85,10 @@ says so in its pull request, on a line of its own:
 Ratchet-Exception: coverage - the module it covered was deleted
 ```
 
-The time budget is a limit, not a level: it is the one thing in `quality.json`,
-and it changes only by hand.
+How long the suite takes is shown and judged by nothing, so a busy machine
+never turns a change red (claude-voice's
+[ADR-CV-021](https://github.com/roykollensvendsen/claude-voice/blob/main/decisions/ADR-CV-021-the-test-suite-has-no-time-cap.md)).
+A slower suite is still worth fixing; see the code-quality skill.
 
 ## How a change is made
 
