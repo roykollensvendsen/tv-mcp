@@ -123,6 +123,10 @@ def test_how_long_the_suite_takes_is_shown_and_judged_by_nothing():
     assert ratchet.notes(measured(test_seconds=41.5)) == [
         "The suite took 41.5 s on the clock, judged by nothing"
     ]
+
+
+def test_no_time_limit_is_kept_in_a_file_of_its_own():
+    # The budget was the only thing quality.json held; with it gone, nothing may bring a cap back there.
     assert not (ROOT / "quality.json").exists()
 
 
