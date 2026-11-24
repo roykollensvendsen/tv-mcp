@@ -199,6 +199,9 @@ jobs:
         run: uv run ruff check . && uv run ruff format --check .
       - name: Types
         run: uv run mypy src
+      - name: No temporary file left behind
+        # The voice plugins' shared check (claude-voice packages/voice-checks), rule R24.
+        run: uv run voice-checks temp-files
       - name: The rules that guard the rules
         # Coverage is measured and printed, with no threshold yet: a number
         # picked before there is data is a guess with a gate on it.

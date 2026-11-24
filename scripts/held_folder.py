@@ -38,6 +38,8 @@ class HeldFolder:
 
     def __init__(self, prefix: str, dir: Path | None = None) -> None:  # noqa: A002 - tempfile's name for it
         """Make the folder in `dir`, or in the temporary folder, and lock it."""
+        # Deleted by the method remove, or by the next sweep once its holder is gone.
+        # temp-files: removed by delete, sweep
         self.path = Path(tempfile.mkdtemp(prefix=prefix, dir=dir))
         self.name = str(self.path)
         # Locked under another name, then renamed, so the lock's name never stands unlocked.
@@ -52,7 +54,7 @@ class HeldFolder:
         if self._lock is not None:
             os.close(self._lock)
             self._lock = None
-        return remove(self.path)
+        return delete(self.path)
 
     def __enter__(self) -> str:
         """Give the folder's name, as TemporaryDirectory does."""
@@ -99,12 +101,12 @@ def sweep(place: Path, prefix: str) -> list[str]:
     for path in sorted(place.glob(prefix + "*")):
         # RULE: a held folder a killed holder left is removed by the next sweep
         if left_behind(path):
-            remove(path)
+            delete(path)
             removed.append(path.name)
     return removed
 
 
-def remove(folder: Path) -> bool:
+def delete(folder: Path) -> bool:
     """Delete a folder, giving back the rights to any part its holder shut; say whether it is gone."""
     for place, folders, _ in os.walk(folder):
         for name in folders:

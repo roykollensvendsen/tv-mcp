@@ -28,6 +28,13 @@ youtube = [
     "yt-dlp==2026.10.26",
 ]
 
+# Only for working on tv-mcp, never published with it, so it may point at a commit:
+# the check tools every voice plugin shares. `uv run voice-checks bump` moves the pin.
+[dependency-groups]
+dev = [
+    "voice-checks @ git+https://github.com/roykollensvendsen/claude-voice@d698593c9658dd5607f4c59cd23fc9d346f35897#subdirectory=packages/voice-checks",
+]
+
 # One source for the version: the Git tag. A literal here would drift from it.
 [tool.hatch.version]
 source = "vcs"
