@@ -197,9 +197,14 @@ class PowerService:
             # Nothing reached the TV, so the yes still stands while the question is fresh.
             if self._pending is None:
                 self._pending = pending
-            return _refused(
-                f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
-            )
+            say = f"{pending.tv.spoken.capitalize()} did not answer. Check that it is on, and try again."
+            # RULE: a Chromecast that cannot wake its TV is named as what did not answer
+            if through_cast:
+                say = (
+                    f"The Chromecast in {pending.tv.spoken} did not answer, so it could not wake the TV."
+                    " Check that the Chromecast has power and is on the Wi-Fi, and try again."
+                )
+            return _refused(say)
         seen = await self._seen(pending.tv, wanted, since=started, until=until)
         took = round(self._clock() - started, 1)
         if seen:
